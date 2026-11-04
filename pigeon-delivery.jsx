@@ -1,0 +1,189 @@
+import React,{Suspense,useMemo,useEffect,useRef,useState,useCallback} from 'react';
+import {Canvas,useLoader,useFrame} from '@react-three/fiber';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {clone} from 'three/addons/utils/SkeletonUtils.js';
+import * as THREE from 'three';
+import {createPigeonClips} from './pigeon-clips';
+function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,onFed,onCapsule,capsuleTarget,onHover}){
+ const gltf=useLoader(GLTFLoader,import.meta.env.BASE_URL+'models/pigeon.glb');
+ const feedingAction=useRef(),feedCycle=useRef(-1),emptyTime=useRef(0),feedingDone=useRef(false);const capsuleRef=useRef();const root=useRef(),clock=useRef(0),previous=useRef(),bitten=useRef(false);
+ const {bird,mixer,clips,fit}=useMemo(()=>{const bird=clone(gltf.scene);bird.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;if(o.name==='poopMesh_Pigeon_mainMat_0')o.visible=false;const mats=Array.isArray(o.material)?o.material:[o.material];o.material=mats.map(m=>{const c=m.clone();if(c.name==='Pigeon_mainMat'){c.transparent=false;c.alphaTest=.45;c.depthWrite=true;c.side=THREE.DoubleSide}return c});if(!Array.isArray(gltf.scene.getObjectByName(o.name)?.material))o.material=o.material[0]}});bird.updateMatrixWorld(true);const b=new THREE.Box3().setFromObject(bird),size=b.getSize(new THREE.Vector3()),center=b.getCenter(new THREE.Vector3());return{bird,mixer:new THREE.AnimationMixer(bird),clips:createPigeonClips(gltf.animations[0]),fit:{scale:2.5/Math.max(size.x,size.y,size.z),center,min:b.min.y,size}}},[gltf]);
+ const livingPose=useMemo(()=>({
+  head:bird.getObjectByName('head1_09'),chest:bird.getObjectByName('chest_059'),
+  headBase:new THREE.Quaternion(),chestBase:new THREE.Vector3(),
+  offset:new THREE.Quaternion(),angles:new THREE.Euler(),applied:false,weight:0,time:0
+ }),[bird]);
+ const activeSeed=seeds.find(seed=>!seed.eaten)?.id;
+ const feedingSpot=useMemo(()=>{
+  // Find the beak's lowest point in one peck, in the model's own coordinates.
+  const probe=clone(gltf.scene),probeMixer=new THREE.AnimationMixer(probe);
+  const action=probeMixer.clipAction(clips.peck);action.play();
+  const beak=probe.getObjectByName('Upper_Beak_010');
+  let lowest=Infinity,time=1,point=new THREE.Vector3();
+  for(let t=.15;t<clips.peck.duration-.15;t+=.02){
+   probeMixer.setTime(t);probe.updateMatrixWorld(true);
+   const tip=beak.localToWorld(new THREE.Vector3(0,.65,0));
+   if(tip.y<lowest){lowest=tip.y;time=t;point.copy(tip)}
+  }
+  probeMixer.stopAllAction();probeMixer.uncacheRoot(probe);
+  return {point,time};
+ },[gltf,clips]);
+ useEffect(()=>{
+  const leg=bird.getObjectByName('L_leg_077');if(!leg)return;
+  // Skeleton-local dimensions: the imported rig and scene use different units.
+  const length=leg.children[0].position.length(),r=length*.14;
+  const attachment=new THREE.Group();attachment.position.y=length*.55;
+  const brass=new THREE.MeshStandardMaterial({color:'#c2a16a',metalness:.55,roughness:.4});
+  const leather=new THREE.MeshStandardMaterial({color:'#765132',roughness:.9,side:THREE.DoubleSide});
+  const tube=new THREE.Mesh(new THREE.CylinderGeometry(r,r,r*3.8,32),brass);
+  tube.position.x=r*1.65;attachment.add(tube);
+  for(const y of [-1.55,1.55]){
+   const rim=new THREE.Mesh(new THREE.TorusGeometry(r*1.02,r*.09,8,32),brass);
+   rim.rotation.x=Math.PI/2;rim.position.set(r*1.65,y*r,0);attachment.add(rim);
+  }
+  // Two continuous leather loops embrace both the shin and the message tube.
+  for(const y of [-.85,.85]){
+   const strap=new THREE.Mesh(new THREE.TorusGeometry(r*1.35,r*.15,8,40),leather);
+   strap.rotation.x=Math.PI/2;strap.scale.x=1.43;strap.position.set(r*.8,y*r,0);attachment.add(strap);
+  }
+  attachment.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.userData.capsule=true}});
+  capsuleRef.current=attachment;leg.add(attachment);
+  return()=>{leg.remove(attachment);attachment.traverse(o=>o.geometry?.dispose());brass.dispose();leather.dispose()};
+ },[bird]);
+ useEffect(()=>{
+  clock.current=0;bitten.current=false;feedCycle.current=-1;emptyTime.current=0;feedingDone.current=false;
+  const interactive=phase==='waiting'||phase==='ready';
+  const reacting=interactive&&reaction>0;
+  const reactions=['reactLook'];
+  const key=reacting?reactions[(reaction-1)%reactions.length]:phase==='arrival'?'flight':phase==='landing'?'approachAndLand':phase==='feeding'?'peck':phase==='ready'?'walk':'idle';
+  const action=mixer.clipAction(clips[key]);
+  action.reset().setEffectiveWeight(1).setEffectiveTimeScale(phase==='landing'?clips.approachAndLand.duration/.95:interactive&&!reacting?1.2:1);
+  action.setLoop(interactive&&!reacting?THREE.LoopRepeat:THREE.LoopOnce,interactive&&!reacting?Infinity:1);action.clampWhenFinished=!(interactive&&!reacting);
+  if(phase==='ready'&&!reacting){action.time=.15;action.paused=true}
+  if(phase==='feeding'){action.time=Math.max(0,feedingSpot.time-.42);action.paused=true;feedingAction.current=action}
+  action.play();
+  if(previous.current&&previous.current!==action){previous.current.fadeOut(phase==='landing'?.18:phase==='feeding'?.65:.5);action.fadeIn(phase==='landing'?.18:phase==='feeding'?.65:.5)}
+  previous.current=action;
+  const done=e=>{
+   if(e.action!==action)return;
+   if(reacting)onReactionEnd();
+   else if(phase==='landing')onPhase('waiting');
+   
+  };
+  mixer.addEventListener('finished',done);
+  return()=>mixer.removeEventListener('finished',done);
+ },[phase,reaction,clips,mixer,onPhase,onReactionEnd,onFed]);
+ useEffect(()=>()=>{mixer.stopAllAction();mixer.uncacheRoot(bird);bird.traverse(o=>{if(o.isMesh)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose())})},[mixer,bird]);
+ useFrame((_,dt)=>{const d=Math.min(dt,.05);
+  // Restore the sampled pose before adding this frame's gentle movement.
+  // This avoids accumulating rotation when blending between skeletal actions.
+  const pose=livingPose;
+  if(pose.applied){pose.head?.quaternion.copy(pose.headBase);pose.chest?.scale.copy(pose.chestBase)}
+  if(phase==='feeding'&&feedingAction.current){
+   const t=clock.current,lower=Math.max(0,feedingSpot.time-.42);
+   if(t<.65){feedingAction.current.time=lower}
+   else{
+    const cycle=(t-.65)/.9,index=Math.floor(cycle),fraction=cycle-index;
+    feedingAction.current.time=lower+.42*(.5-.5*Math.cos(fraction*Math.PI*2));
+    if(fraction>=.5&&feedCycle.current!==index&&activeSeed!==undefined){feedCycle.current=index;onBite(activeSeed)}
+    if(activeSeed===undefined){emptyTime.current+=d;if(emptyTime.current>.65&&!feedingDone.current){feedingDone.current=true;onFed()}}else emptyTime.current=0;
+   }
+  }
+  mixer.update(d);
+  if(capsuleRef.current)capsuleRef.current.getWorldPosition(capsuleTarget.current);
+  root.current.rotation.y=THREE.MathUtils.damp(root.current.rotation.y,phase==='ready'?.3:0,3,d);
+  pose.time+=d;
+  const resting=(phase==='waiting'||phase==='ready')&&reaction===0;
+  pose.weight=THREE.MathUtils.damp(pose.weight,resting?1:0,6,d);
+  if(pose.head&&pose.chest){
+   pose.headBase.copy(pose.head.quaternion);pose.chestBase.copy(pose.chest.scale);
+   const t=pose.time,w=pose.weight;
+   pose.angles.set(w*(.022*Math.sin(t*1.7)+.012*Math.sin(t*.63)),w*(.055*Math.sin(t*.81)+.018*Math.sin(t*1.43)),w*.018*Math.sin(t*1.1));
+   pose.offset.setFromEuler(pose.angles);pose.head.quaternion.multiply(pose.offset);
+   const breath=w*.009*Math.sin(t*2.3);
+   pose.chest.scale.set(pose.chestBase.x*(1+breath),pose.chestBase.y*(1+breath*.35),pose.chestBase.z*(1+breath));
+   pose.applied=true;
+  }
+  clock.current+=d;if(phase==='arrival'){const t=Math.min(clock.current/1.35,1);root.current.position.set(-5+4.65*t,1.6-1.3*t,-2+1.85*t);if(t===1)onPhase('landing')}else if(phase==='landing'){const t=Math.min(clock.current/.95,1),remaining=Math.pow(1-t,2);root.current.position.set(-.35*remaining,.3*remaining,-.15*remaining)}else root.current.position.set(0,0,0)});
+ return <group ref={root}><group scale={fit.scale} rotation-y={-.35} position={[-fit.center.x*fit.scale,-fit.min*fit.scale,-fit.center.z*fit.scale]}><primitive object={bird} onPointerOver={e=>{e.stopPropagation();onHover(e.object.userData.capsule?'capsule':'bird')}} onPointerOut={()=>onHover(null)} onClick={e=>{e.stopPropagation();if(phase==='ready'&&e.object.userData.capsule)onCapsule();else onReact(e.clientX,e.clientY)}}/>{seeds.filter(seed=>!seed.eaten).map((seed,i)=><Seed key={seed.id} point={feedingSpot.point} index={i} size={.026/fit.scale}/>)}</group></group>
+}
+function Seed({point,index,size}){
+ const mesh=useRef(),age=useRef(0);
+ useFrame((_,dt)=>{age.current+=dt;mesh.current.position.y=point.y+Math.max(0,1-age.current/.45)*size*18});
+ return <mesh ref={mesh} position={[point.x+index*size*1.5,point.y,point.z+Math.sin(index*2)*size*2]} scale={[size,size*.55,size*1.4]} castShadow><sphereGeometry args={[1,12,8]}/><meshStandardMaterial color="#e3bd70" roughness={.9}/></mesh>
+}
+function DeliveryCamera({phase,zoom,capsuleTarget}){
+ const target=useRef(new THREE.Vector3(0,.65,0));
+ useFrame(({camera},dt)=>{
+  const close=phase==='ready'?zoom:0;
+  const position=new THREE.Vector3(2.6,1.65,3.6).lerp(capsuleTarget.current.clone().add(new THREE.Vector3(.65,.3,.9)),close);
+  const aim=new THREE.Vector3(0,.65,0).lerp(capsuleTarget.current,close);
+  const easing=1-Math.exp(-Math.min(dt,.05)*2.4);
+  camera.position.lerp(position,easing);target.current.lerp(aim,easing);camera.lookAt(target.current);
+ });return null;
+}
+function Capsule(){const cap=useRef();useFrame((_,dt)=>{cap.current.position.y=THREE.MathUtils.lerp(cap.current.position.y,.65,1-Math.exp(-dt*2))});return <group position={[0,.9,0]} rotation={[0,0,-.45]}><mesh><cylinderGeometry args={[.16,.16,.8,40]}/><meshStandardMaterial color="#9c8057" metalness={.65} roughness={.5}/></mesh><mesh ref={cap} position-y={.43}><cylinderGeometry args={[.175,.175,.12,40]}/><meshStandardMaterial color="#a88b5d" metalness={.65} roughness={.5}/></mesh><mesh position-y={.46}><cylinderGeometry args={[.105,.105,.65,40]}/><meshStandardMaterial color="#d3c5a3" roughness={1}/></mesh></group>}
+export default function PigeonDelivery({onOpen,onWrite}){
+ const[phase,setPhase]=useState('arrival'),[seeds,setSeeds]=useState([]),[reaction,setReaction]=useState(0);
+ const[fullness,setFullness]=useState(0),[unlocked,setUnlocked]=useState(false),[zoom,setZoom]=useState(0),[hover,setHover]=useState(null),[pet,setPet]=useState(null);
+ const energy=useRef(0),lastMeal=useRef(0),everEaten=useRef(0),isUnlocked=useRef(false),petTimer=useRef();
+ const seedQueue=useRef([]),seedNumber=useRef(0),reactionCount=useRef(0),reacting=useRef(false);
+ const capsuleTarget=useRef(new THREE.Vector3(0,.3,0)),container=useRef();
+ const change=useCallback(p=>{reacting.current=false;setReaction(0);setPhase(p)},[]);
+ const endReaction=useCallback(()=>{reacting.current=false;setReaction(0)},[]);
+ const react=useCallback((x,y)=>{
+  if(!['waiting','ready'].includes(phase))return;
+  const rect=container.current.getBoundingClientRect();
+  setPet({x:typeof x==='number'?x-rect.left:rect.width*.55,y:typeof y==='number'?y-rect.top:rect.height*.45,key:performance.now()});
+  clearTimeout(petTimer.current);petTimer.current=setTimeout(()=>setPet(null),1200);
+  if(!reacting.current){reacting.current=true;setReaction(++reactionCount.current)}
+ },[phase]);
+ useEffect(()=>()=>clearTimeout(petTimer.current),[]);
+ useEffect(()=>{
+  let previous=Date.now();
+  const timer=setInterval(()=>{const now=Date.now(),dt=Math.min(5,(now-previous)/1000);previous=now;
+   if(now-lastMeal.current>60000&&energy.current>0){energy.current=Math.max(0,energy.current-dt*.2);setFullness(energy.current)}
+  },1000);return()=>clearInterval(timer);
+ },[]);
+ const dropSeed=useCallback(()=>{
+  if(!['waiting','ready','feeding'].includes(phase)||energy.current+seedQueue.current.length*20>80.01)return;
+  const next=[...seedQueue.current,{id:++seedNumber.current,eaten:false}];seedQueue.current=next;setSeeds(next);setZoom(0);change('feeding');
+ },[phase,change]);
+ const bite=useCallback(id=>{
+  if(!seedQueue.current.some(s=>s.id===id))return;
+  const next=seedQueue.current.filter(s=>s.id!==id);seedQueue.current=next;setSeeds(next);
+  energy.current=Math.min(100,energy.current+20);lastMeal.current=Date.now();everEaten.current++;
+  setFullness(energy.current);
+  if(everEaten.current>=4){isUnlocked.current=true;setUnlocked(true)}
+ },[]);
+ const fed=useCallback(()=>change(isUnlocked.current?'ready':'waiting'),[change]);
+ useEffect(()=>{
+  if(phase!=='ready')return;const el=container.current;let touch=null;
+  const move=delta=>setZoom(z=>THREE.MathUtils.clamp(z+delta,0,1));
+  const wheel=e=>{e.preventDefault();move(e.deltaY*.002)};
+  const start=e=>{touch=e.touches[0].clientY};
+  const drag=e=>{if(touch===null)return;e.preventDefault();move((touch-e.touches[0].clientY)*.004);touch=e.touches[0].clientY};
+  el.addEventListener('wheel',wheel,{passive:false});el.addEventListener('touchstart',start,{passive:true});el.addEventListener('touchmove',drag,{passive:false});
+  return()=>{el.removeEventListener('wheel',wheel);el.removeEventListener('touchstart',start);el.removeEventListener('touchmove',drag)};
+ },[phase]);
+ const hungry=energy.current+seeds.length*20<=80.01;const hunger=Math.round(100-fullness);
+ const captions={arrival:'A little messenger. A long way home.',landing:'Something precious has arrived.',waiting:'A little company. A little kindness.',feeding:'One small seed. A little kindness.',ready:'A little gift, just for you.'};
+ return <div className={"pigeon-delivery "+(hover==='bird'?'pet-hover':hover==='capsule'?'capsule-hover':'')} ref={container}>
+ <Canvas shadows camera={{position:[2.6,1.65,3.6],fov:40}} dpr={[1,2]} onCreated={({camera})=>camera.lookAt(0,.65,0)}>
+ <DeliveryCamera phase={phase} zoom={zoom} capsuleTarget={capsuleTarget}/><color attach="background" args={['#24261f']}/><hemisphereLight args={['#f1e9d7','#77735e',2.4]}/><directionalLight position={[2,5,4]} intensity={3} castShadow shadow-mapSize={[2048,2048]}/>
+ <mesh rotation-x={-Math.PI/2} receiveShadow onClick={e=>{e.stopPropagation();dropSeed()}}><planeGeometry args={[100,100]}/><meshStandardMaterial color="#393a30" roughness={1}/></mesh>
+ <Suspense fallback={null}><Messenger phase={phase} onPhase={change} reaction={reaction} onReact={react} onReactionEnd={endReaction} seeds={seeds} onBite={bite} onFed={fed} onCapsule={onOpen} capsuleTarget={capsuleTarget} onHover={setHover}/></Suspense>
+ </Canvas><div className="vignette"/><header><span className="brand">dearly<span>LETTERS, FELT.</span></span><button onClick={onWrite}>Write a letter</button></header>
+ <div className="caption"><p>THE PIGEON POST</p><h1>{captions[phase]}</h1></div>
+ <div className="bottom">
+ {['waiting','feeding','ready'].includes(phase)&&<div className="pigeon-trust"><label htmlFor="pigeon-hunger">{fullness>=80?'Content':fullness>=40?'Feeling better':'A hungry little messenger'} <span>Hunger {hunger}%</span></label><progress id="pigeon-hunger" max="100" value={hunger}/><small>{hungry?'Drop a few seeds. Petting is always optional.':seeds.length?'Enough on the ground for a full meal.':'A full tummy. More seeds when it is hungry again.'}</small></div>}
+ <div className="controls">
+ {['waiting','ready'].includes(phase)&&<button className="capsule-keyboard" onClick={()=>react()} aria-label="Pet the pigeon">Pet the pigeon</button>}
+ {['waiting','feeding','ready'].includes(phase)&&<button className="primary" onClick={dropSeed} disabled={!hungry}>{!hungry?'Enough seeds for now':phase==='feeding'?'Add a seed to its meal':'Drop a seed'}</button>}
+ {phase==='ready'&&<><button onClick={()=>setZoom(z=>z<.8?1:0)}>{zoom<.8?'Look closer at its leg':'View the pigeon'}</button><button className="capsule-keyboard" onClick={onOpen} aria-label="Open the brass capsule on the pigeon leg">Open leg capsule</button></>}
+ </div>
+ {phase==='ready'?<p>Scroll to look closer. Click the brass capsule on its leg.</p>:['waiting','feeding'].includes(phase)&&<p>Tap the ground to feed it. Stroke the pigeon with a click.</p>}
+ <div className="bird-credit">Pigeon by <a href="https://sketchfab.com/LostModels2025" target="_blank" rel="noreferrer">LostBoyz2078</a> · <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noreferrer">CC BY-NC 4.0</a> · materials adapted</div>
+ </div>{pet&&<div key={pet.key} className="pet-stroke" style={{left:pet.x,top:pet.y}} aria-hidden="true"><svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M24 54c-5-8-13-15-13-20 0-4 4-5 7-1l5 6V13c0-5 6-5 6 0v17-21c0-5 6-5 6 0v21-17c0-5 6-5 6 0v19-12c0-5 6-5 6 0v20c0 7-3 11-5 14"/><path d="M6 16l-3-3M49 7l3-4M54 23h5"/></svg></div>}</div>
+}
+
