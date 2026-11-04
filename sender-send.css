@@ -1,0 +1,11 @@
+/* Sender finish scene — layout only; buttons, brand, caption, progress,
+   notice and vignette reuse the shared styles in style.css. */
+.send-experience > div:first-child { position: absolute !important; inset: 0; }
+.send-experience header { z-index: 3; }
+.send-experience .caption { z-index: 2; }
+.send-experience .bottom { z-index: 2; }
+@media (max-width: 650px) {
+  .send-experience .controls { flex-wrap: wrap; padding: 0 18px; }
+  .send-experience .controls button { font-size: 10px; padding: 12px 14px; }
+  .send-experience .primary { min-width: 200px; }
+}
