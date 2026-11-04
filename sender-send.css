@@ -2,7 +2,8 @@
    notice and vignette reuse the shared styles in style.css. */
 .send-experience > div:first-child { position: absolute !important; inset: 0; }
 .send-experience header { z-index: 3; }
-.send-experience .caption { z-index: 2; }
+.send-experience .caption { z-index: 2; text-shadow: 0 1px 14px rgba(10,10,8,.9), 0 0 3px rgba(10,10,8,.9); }
+.send-experience .caption h1 { font-size: clamp(26px, 4.6vw, 44px); }
 .send-experience .bottom { z-index: 2; }
 @media (max-width: 650px) {
   .send-experience .controls { flex-wrap: wrap; padding: 0 18px; }
