@@ -1,0 +1,33 @@
+import {useEffect,useMemo,useState} from 'react';
+import {useLoader} from '@react-three/fiber';
+import * as THREE from 'three';
+import {createInkLayer,compositeInk} from './ink';
+import {layoutLetter,PAGE} from './letter-layout';
+import {paperSource} from './paper-picker';
+export function useLetterTexture(letter,onLayout,live=false){
+ const paper=useLoader(THREE.TextureLoader,paperSource(letter));const[font,setFont]=useState(0);
+ useEffect(()=>{let alive=true;document.fonts.load('72px "Mrs Saint Delafield"').then(()=>{if(alive)setFont(1)});return()=>{alive=false}},[]);
+ // Background processing is cached independently of typing.
+ const paperBase=useMemo(()=>{
+  const c=document.createElement('canvas');c.width=PAGE.width;c.height=PAGE.height;const x=c.getContext('2d');
+  const image=paper.image,zoom=Math.max(1,Math.min(2.5,Number(letter.paperZoom)||1));
+  const scale=Math.max(c.width/image.width,c.height/image.height)*zoom,w=image.width*scale,h=image.height*scale;
+  const px=Math.max(0,Math.min(100,Number(letter.paperX??50)))/100,py=Math.max(0,Math.min(100,Number(letter.paperY??50)))/100;
+  x.drawImage(image,(c.width-w)*px,(c.height-h)*py,w,h);
+  x.fillStyle=`rgba(246,239,220,${Math.max(0,Math.min(.8,Number(letter.paperSoftness??.2)))})`;x.fillRect(0,0,c.width,c.height);return c;
+ },[paper,letter.paperZoom,letter.paperX,letter.paperY,letter.paperSoftness]);
+ const texture=useMemo(()=>{
+  const c=document.createElement('canvas');c.width=PAGE.width;c.height=PAGE.height;const x=c.getContext('2d');x.drawImage(paperBase,0,0);
+  const layout=layoutLetter(x,letter),ink=createInkLayer(c.width,c.height,letter.ink||'#39352e');
+  for(const row of layout.lines)ink.write(row.text,row.baseline,row.size);
+  const inkCanvas=ink.finish(live);
+  if(Array.isArray(letter.signature)){
+   const sx=inkCanvas.getContext('2d');sx.save();sx.translate(160,layout.signatureY);sx.scale(2,1.3);sx.strokeStyle=letter.ink||'#39352e';sx.lineWidth=1.8;sx.lineCap='round';sx.lineJoin='round';
+   for(const stroke of letter.signature){if(!Array.isArray(stroke))continue;sx.beginPath();stroke.forEach((p,i)=>{if(Array.isArray(p)&&p.every(Number.isFinite))i?sx.lineTo(p[0],p[1]):sx.moveTo(p[0],p[1])});sx.stroke()}sx.restore();
+  }
+  compositeInk(x,inkCanvas);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;t.userData={lines:layout.lines.filter(r=>r.text.trim()),layout,paperBase,ink:inkCanvas};return t;
+ },[paperBase,letter,font,live]);
+ useEffect(()=>{onLayout?.(texture.userData.lines,texture.userData.layout)},[texture,onLayout]);
+ useEffect(()=>()=>texture.dispose(),[texture]);return texture;
+}
