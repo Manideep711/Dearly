@@ -1,0 +1,1 @@
+{"name":"dearly","version":"1.0.0","type":"module","scripts":{"dev":"vite --host 127.0.0.1","build":"vite build"},"dependencies":{"@react-three/fiber":"^9.0.0","react":"^19.0.0","react-dom":"^19.0.0","shaders":"^4.0.6","three":"^0.180.0","vite":"^6.1.0"}}
