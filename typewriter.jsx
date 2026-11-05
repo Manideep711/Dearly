@@ -49,7 +49,7 @@ function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
  // group exists and keep its texture current.
  useEffect(()=>{
   if(!paperGroup.current||paperMesh.current)return;
-  const m=new THREE.Mesh(new THREE.PlaneGeometry(PW,PH,48,64),new THREE.MeshStandardMaterial({roughness:.94,side:THREE.DoubleSide}));
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(PW,PH),new THREE.MeshStandardMaterial({roughness:.94,side:THREE.DoubleSide}));
   m.castShadow=true;m.receiveShadow=true;paperGroup.current.add(m);paperMesh.current=m;
   return()=>{paperGroup.current&&paperGroup.current.remove(m);m.geometry.dispose();m.material.dispose();paperMesh.current=null};
  },[]);
@@ -94,7 +94,7 @@ function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
   if(paperGroup.current)paperGroup.current.position.y=THREE.MathUtils.damp(paperGroup.current.position.y,t.y,7,dt);
   if(typebar.current){const age=performance.now()-pulse.current;typebar.current.rotation.x=age<160?.5-Math.sin(age/160*Math.PI)*.78:.5}
  });
- return <><color attach="background" args={['#0d0b08']}/><ambientLight intensity={.28} color="#ffe7c4"/><hemisphereLight args={['#4a3a26','#0b0906',.75]}/><directionalLight position={[-5,1.5,5]} intensity={1.15} color="#ffb066" castShadow shadow-mapSize={[1024,1024]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-2.62,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group position={[-.3,.53,.2]}><Candle/></group><Machine carriage={carriage} paperGroup={paperGroup} typebar={typebar}/></>
+ return <><color attach="background" args={['#0d0b08']}/><ambientLight intensity={.28} color="#ffe7c4"/><hemisphereLight args={['#4a3a26','#0b0906',.75]}/><directionalLight position={[-5,1.5,5]} intensity={1.15} color="#ffb066" castShadow shadow-mapSize={[512,512]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-2.62,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group position={[-.3,.53,.2]}><Candle/></group><Machine carriage={carriage} paperGroup={paperGroup} typebar={typebar}/></>
 }
 export default function TypewriterDesk({letter,onChange,onPreview,onSwitchMode}){
  const input=useRef(),pulse=useRef(0),lastClack=useRef(0);
@@ -106,7 +106,7 @@ export default function TypewriterDesk({letter,onChange,onPreview,onSwitchMode})
   onChange({...letter,body:v})}
  function toggleSound(){const v=!soundOn;setSoundOn(v);soundRef.current=v;sfx.on=v;try{localStorage.setItem('dearly-sound',v?'on':'off')}catch(e){}if(v){sfx.ensure();sfx.clack()}}
  return <main className="atelier"><nav><span className="brand">dearly<span>Writing room</span></span><span className="atelier-saved">Saved on this device</span></nav><div className="atelier-heading"><h1>Your letter</h1></div>
- <ModeSwitch mode="type" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div className="atelier-stage" onClick={()=>input.current?.focus()}><Canvas shadows dpr={[1,1.5]} camera={{fov:35,position:[0,.25,11],near:.1,far:120}}><Suspense fallback={null}><TypeScene letter={letter} onMetrics={receiveMetrics} caret={caret} pulse={pulse} soundRef={soundRef}/></Suspense></Canvas>
+ <ModeSwitch mode="type" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div className="atelier-stage" onClick={()=>input.current?.focus()}><Canvas shadows dpr={[1,1.25]} camera={{fov:35,position:[0,.25,11],near:.1,far:120}}><Suspense fallback={null}><TypeScene letter={letter} onMetrics={receiveMetrics} caret={caret} pulse={pulse} soundRef={soundRef}/></Suspense></Canvas>
  <textarea ref={input} aria-label="Write your letter" spellCheck="false" value={letter.body} maxLength={1500} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} onChange={bodyChanged} onSelect={e=>setCaret(e.target.selectionStart??0)} style={{position:'absolute',inset:0,width:'100%',height:'100%',opacity:0,resize:'none',border:0,padding:0,cursor:'text',fontSize:16}}/>
  </div><section className="atelier-controls"><div className="atelier-spacing"><label>Letter size <input type="range" aria-label="Letter size" min="32" max="88" step="2" value={letter.fontSize||72} onChange={e=>onChange({...letter,fontSize:Number(e.target.value)})}/></label><label>Line spacing <input type="range" aria-label="Line spacing" min="1.28" max="1.8" step=".05" value={letter.lineSpacing||1.35} onChange={e=>onChange({...letter,lineSpacing:Number(e.target.value)})}/></label><span>{metrics?.fill||0}% of the page</span></div>
  <div className="atelier-spacing" style={{marginTop:6}}><label>To <input type="text" aria-label="Recipient" placeholder="My dearest," value={letter.to} maxLength={60} onChange={e=>onChange({...letter,to:e.target.value})} style={{width:180}}/></label><label>From <input type="text" aria-label="Sign off" placeholder="Yours, always" value={letter.from} maxLength={60} onChange={e=>onChange({...letter,from:e.target.value})} style={{width:180}}/></label></div>

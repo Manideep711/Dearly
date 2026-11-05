@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {useLoader} from '@react-three/fiber';
 import * as THREE from 'three';
 import {createInkLayer,compositeInk} from './ink';
@@ -16,9 +16,20 @@ export function useLetterTexture(letter,onLayout,live=false,inkRef=null){
   x.drawImage(image,(c.width-w)*px,(c.height-h)*py,w,h);
   x.fillStyle=`rgba(246,239,220,${Math.max(0,Math.min(.8,Number(letter.paperSoftness??.2)))})`;x.fillRect(0,0,c.width,c.height);return c;
  },[paper,letter.paperZoom,letter.paperX,letter.paperY,letter.paperSoftness]);
+ // One persistent canvas + texture per hook instance, redrawn in place.
+ // The old code allocated a fresh 1536x2048 canvas, ink layer and GPU
+ // texture on EVERY keystroke; the churn (GC + re-upload) was the desks'
+ // typing lag on phones. The ink layer is likewise reused (cleared per
+ // rebuild) and only recreated when the ink colour or face changes.
+ const inkTick=inkRef?inkRef.tick:0;
+ const store=useRef(null);
+ if(!store.current){const c=document.createElement('canvas');c.width=PAGE.width;c.height=PAGE.height;const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;store.current={canvas:c,texture:t,ink:null,inkKey:''}}
  const texture=useMemo(()=>{
-  const c=document.createElement('canvas');c.width=PAGE.width;c.height=PAGE.height;const x=c.getContext('2d');x.drawImage(paperBase,0,0);
-  const layout=layoutLetter(x,letter),ink=createInkLayer(c.width,c.height,letter.ink||'#39352e',letter.face);
+  const c=store.current.canvas,t=store.current.texture,x=c.getContext('2d');x.drawImage(paperBase,0,0);
+  const layout=layoutLetter(x,letter);
+  const inkKey=(letter.ink||'#39352e')+'|'+(letter.face||'hand');
+  if(!store.current.ink||store.current.inkKey!==inkKey){store.current.ink=createInkLayer(c.width,c.height,letter.ink||'#39352e',letter.face);store.current.inkKey=inkKey}
+  const ink=store.current.ink;ink.clear();
   // Live ink (desk only): each body word remembers the charge it was written
   // with and stays "wet" (darker, slightly bleeding) for its first seconds.
   let wordStyles=null;
@@ -41,8 +52,8 @@ export function useLetterTexture(letter,onLayout,live=false,inkRef=null){
    for(const stroke of letter.signature){if(!Array.isArray(stroke))continue;sx.beginPath();stroke.forEach((p,i)=>{if(Array.isArray(p)&&p.every(Number.isFinite))i?sx.lineTo(p[0],p[1]):sx.moveTo(p[0],p[1])});sx.stroke()}sx.restore();
   }
   compositeInk(x,inkCanvas);
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;t.userData={lines:layout.lines.filter(r=>r.text.trim()),layout,paperBase,ink:inkCanvas};return t;
- },[paperBase,letter,font,live,inkRef?inkRef.tick:0]);
- useEffect(()=>{onLayout?.(texture.userData.lines,texture.userData.layout)},[texture,onLayout]);
- useEffect(()=>()=>texture.dispose(),[texture]);return texture;
+  t.userData={lines:layout.lines.filter(r=>r.text.trim()),layout,paperBase,ink:inkCanvas};t.needsUpdate=true;return t;
+ },[paperBase,letter,font,live,inkTick]);
+ useEffect(()=>{onLayout?.(texture.userData.lines,texture.userData.layout)},[paperBase,letter,font,live,inkTick,onLayout]);
+ useEffect(()=>()=>{store.current.texture.dispose()},[]);return texture;
 }

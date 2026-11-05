@@ -313,7 +313,7 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
     onTouchStart={e => { touchY.current = e.touches[0].clientY; }}
     onTouchMove={e => { if (touchY.current === null) return; driveRoll((touchY.current - e.touches[0].clientY) / 260); touchY.current = e.touches[0].clientY; }}
     onTouchEnd={() => { touchY.current = null; }}>
-    <Canvas shadows dpr={[1, 2]} camera={{position: [0, .4, 10.4], fov: 42}} gl={{antialias: true}}>
+    <Canvas shadows dpr={[1, 1.5]} camera={{position: [0, .4, 10.4], fov: 42}} gl={{antialias: true}}>
       <Suspense fallback={null}><SendScene letter={letter} phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} onLanded={() => setPhase('attach')} legTarget={legTarget} manualRoll={manualRoll} onRolled={handleRolled}/></Suspense>
     </Canvas>
     <div className="vignette"/>

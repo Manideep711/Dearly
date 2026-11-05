@@ -177,8 +177,8 @@ export default function PigeonDelivery({onOpen,onWrite}){
  const hungry=energy.current+seeds.length*20<=80.01;const hunger=Math.round(100-fullness);
  const captions={arrival:'A little messenger. A long way home.',landing:'Something precious has arrived.',waiting:'A little company. A little kindness.',feeding:'One small seed. A little kindness.',ready:'A little gift, just for you.'};
  return <div className={"pigeon-delivery "+(hover==='bird'?'pet-hover':hover==='capsule'?'capsule-hover':'')} ref={container}>
- <Canvas shadows camera={{position:[2.6,1.65,3.6],fov:40}} dpr={[1,2]} onCreated={({camera})=>camera.lookAt(0,.65,0)}>
- <DeliveryCamera phase={phase} zoom={zoom} capsuleTarget={capsuleTarget}/><color attach="background" args={['#24261f']}/><hemisphereLight args={['#f1e9d7','#77735e',2.4]}/><directionalLight position={[2,5,4]} intensity={3} castShadow shadow-mapSize={[2048,2048]}/>
+ <Canvas shadows camera={{position:[2.6,1.65,3.6],fov:40}} dpr={[1,1.5]} onCreated={({camera})=>camera.lookAt(0,.65,0)}>
+ <DeliveryCamera phase={phase} zoom={zoom} capsuleTarget={capsuleTarget}/><color attach="background" args={['#24261f']}/><hemisphereLight args={['#f1e9d7','#77735e',2.4]}/><directionalLight position={[2,5,4]} intensity={3} castShadow shadow-mapSize={[1024,1024]}/>
  <mesh rotation-x={-Math.PI/2} receiveShadow onClick={e=>{e.stopPropagation();dropSeed()}}><planeGeometry args={[100,100]}/><meshStandardMaterial color="#393a30" roughness={1}/></mesh>
  <Suspense fallback={null}><Messenger phase={phase} onPhase={change} reaction={reaction} onReact={react} onReactionEnd={endReaction} seeds={seeds} onBite={bite} onFed={fed} onCapsule={onOpen} capsuleTarget={capsuleTarget} onHover={setHover}/></Suspense>
  </Canvas><div className="vignette"/><header><span className="brand">dearly<span>LETTERS, FELT.</span></span><button onClick={onWrite}>Write a letter</button></header>
