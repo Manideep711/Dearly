@@ -103,7 +103,8 @@ function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
         const p = smooth(((performance.now() - sealT0.current) / T(1500) - .45) / .55);
         target = CAP_OPEN.clone().lerp(CAP_SHUT, p);
       } else if (phase !== 'capsule') target = CAP_SHUT;
-      cap.current.position.lerp(target, 1 - Math.exp(-.016 * 7));
+      cap.current.position.lerp(target, 1 - Math.exp(-.016 * 9));
+      if (cap.current.position.distanceTo(target) < .004) cap.current.position.copy(target);
     }
   });
   const brass = {color: '#b08d57', metalness: .65, roughness: .42};
@@ -136,6 +137,9 @@ function buildLegCapsule(bird) {
     const strap = new THREE.Mesh(new THREE.TorusGeometry(r * 1.35, r * .15, 8, 40), leather);
     strap.rotation.x = Math.PI / 2; strap.scale.x = 1.43; strap.position.set(r * .8, y * r, 0); attachment.add(strap);
   }
+  // The sender camera sits farther back than the receiver's; scale the
+  // whole attachment up so the tied capsule actually reads on screen.
+  attachment.scale.setScalar(1.6);
   attachment.visible = false;
   leg.add(attachment);
   return attachment;
@@ -152,9 +156,14 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
     return {bird, mixer: new THREE.AnimationMixer(bird), clips: createPigeonClips(gltf.animations[0]), fit: {scale: 3.05 / Math.max(size.x, size.y, size.z), center, min: b.min.y}};
   }, [gltf]);
   const leg = useMemo(() => bird.getObjectByName('L_leg_077'), [bird]);
-  const legCapsule = useMemo(() => buildLegCapsule(bird), [bird]);
-  useEffect(() => () => { if (legCapsule && leg) leg.remove(legCapsule); }, [legCapsule, leg]);
-  useEffect(() => { if (legCapsule) legCapsule.visible = attached; }, [legCapsule, attached]);
+  // Built in an effect after mount, mirroring pigeon-delivery.jsx exactly
+  // (a useMemo-built attachment never appeared on the leg in production).
+  const legCapsule = useRef(null);
+  useEffect(() => {
+    const attachment = buildLegCapsule(bird);
+    legCapsule.current = attachment;
+    return () => { if (attachment && leg) leg.remove(attachment); };
+  }, [bird, leg]);
   const previous = useRef(null);
   const play = (name, {loop = false, timeScale = 1, fade = .35} = {}) => {
     const action = mixer.clipAction(clips[name]);
@@ -189,6 +198,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
   useFrame((_, dt) => {
     const d = Math.min(dt, .1); // raw-ish dt: choreography keeps real-time pace
     mixer.update(d);
+    if (legCapsule.current) legCapsule.current.visible = attached;
     if (leg) leg.getWorldPosition(legTarget.current);
     const r = root.current; if (!r) return;
     const show = phase === 'arrival' || phase === 'attach' || phase === 'depart';
