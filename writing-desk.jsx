@@ -89,13 +89,13 @@ function Lamp({angle,onAngle}){
  const segP=(p,q)=>({pos:[(p.x+q.x)/2,(p.y+q.y)/2],rot:Math.atan2(q.y-p.y,q.x-p.x)-Math.PI/2,len:Math.hypot(q.x-p.x,q.y-p.y)});
  const s1=segP(B,E),s2=segP(E,H),sS=segP({x:B.x-.1,y:B.y+.03},{x:B.x+(E.x-B.x)*.55-.1,y:B.y+(E.y-B.y)*.55});
  const arm=(s,z)=><mesh position={[s.pos[0],s.pos[1],z]} rotation-z={s.rot} castShadow><cylinderGeometry args={[.027,.027,s.len,10]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>;
- const joint=(p,r)=><group position={[p.x,p.y,0]}><mesh rotation-x={Math.PI/2} castShadow><cylinderGeometry args={[r,r,.17,20]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh><mesh rotation-x={Math.PI/2} position-z={.1}><cylinderGeometry args={[r*.45,r*.45,.03,14]}/><meshStandardMaterial color={steel} metalness={.85} roughness={.3}/></mesh><mesh position-z={.118}><boxGeometry args={[r*.62,.014,.012]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh></group>;
- return <group position={[-2.9,-3.15,.75]} onPointerDown={e=>{e.stopPropagation();drag.current={x:e.clientX,y:e.clientY,a:angle||0};try{e.target.setPointerCapture(e.pointerId)}catch(err){}}} onPointerMove={e=>{if(drag.current&&onAngle)onAngle(Math.max(-32,Math.min(40,drag.current.a+(e.clientX-drag.current.x)*.25+(drag.current.y-e.clientY)*.15)))}} onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>
+ const joint=(p,r)=><group position={[p.x,p.y,0]}><mesh rotation-x={Math.PI/2} castShadow><cylinderGeometry args={[r,r,.22,20]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh><mesh rotation-x={Math.PI/2} position-z={.125}><cylinderGeometry args={[r*.45,r*.45,.03,14]}/><meshStandardMaterial color={steel} metalness={.85} roughness={.3}/></mesh><mesh position-z={.143}><boxGeometry args={[r*.62,.014,.012]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh></group>;
+ return <group position={[-2.9,-3.3,.75]} onPointerDown={e=>{e.stopPropagation();drag.current={x:e.clientX,y:e.clientY,a:angle||0};try{e.target.setPointerCapture(e.pointerId)}catch(err){}}} onPointerMove={e=>{if(drag.current&&onAngle)onAngle(Math.max(-32,Math.min(40,drag.current.a+(e.clientX-drag.current.x)*.25+(drag.current.y-e.clientY)*.15)))}} onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>
   <mesh position-y={.045} castShadow receiveShadow><cylinderGeometry args={[.34,.4,.09,28]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>
   <mesh position-y={.12} castShadow><cylinderGeometry args={[.13,.17,.07,20]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>
   {[.075,-.075].map(z=><mesh key={z} position={[0,.14,z]} castShadow><boxGeometry args={[.07,.26,.03]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>)}
   {joint(B,.085)}
-  {arm(s1,.058)}{arm(s1,-.058)}{arm(s2,.058)}{arm(s2,-.058)}
+  {arm(s1,.075)}{arm(s1,-.075)}{arm(s2,.075)}{arm(s2,-.075)}
   <group position={[sS.pos[0],sS.pos[1],-.1]} rotation-z={sS.rot}><mesh><cylinderGeometry args={[.013,.013,sS.len,8]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.45}/></mesh>{[-.38,-.27,-.16,-.05,.06,.17,.28,.39].map(f=><mesh key={f} position-y={f*sS.len} rotation-x={Math.PI/2}><torusGeometry args={[.033,.0105,8,18]}/><meshStandardMaterial color={steel} metalness={.8} roughness={.35}/></mesh>)}</group>
   {joint(E,.078)}
   {joint(H,.07)}
@@ -103,7 +103,7 @@ function Lamp({angle,onAngle}){
    <mesh position-y={.31} castShadow><cylinderGeometry args={[.038,.038,.2,10]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>
    <mesh castShadow><cylinderGeometry args={[.085,.30,.44,24,1,true]}/><meshStandardMaterial color={black} metalness={.4} roughness={.45} side={THREE.DoubleSide}/></mesh>
    <mesh position-y={.25} castShadow><cylinderGeometry args={[.05,.085,.06,16]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh>
-   <mesh position-y={-.1}><sphereGeometry args={[.075,12,10]}/><meshBasicMaterial color="#fff3cf"/></mesh>
+   <mesh position-y={-.19}><sphereGeometry args={[.085,12,10]}/><meshBasicMaterial color="#fff3cf"/></mesh>
    <pointLight position={[0,-.26,.02]} color="#ffdca8" intensity={22} distance={0} decay={2}/>
   </group>
  </group>
@@ -121,7 +121,7 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
   // table front - by projecting sample points and dollying until they fit,
   // then report the sheet's four projected corners for the input overlay.
   const sl=slope.current;if(!sl)return;sl.updateMatrixWorld(true);
-  const pts=[[-2.85,-1.9,.75],[2.8,-2.05,.75]].map(q=>new THREE.Vector3(...q));
+  const pts=[[-2.85,-1.9,.75],[2.8,-2.05,.75],[-2.9,-3.34,.75],[2.8,-3.34,.75]].map(q=>new THREE.Vector3(...q));
   for(const [a,b] of [[-1,1],[1,1],[-1,-1],[1,-1]])pts.push(sl.localToWorld(new THREE.Vector3(a*(PW+.55)/2,b*(PH+.55)/2,0)));
   let dist=13;const v=new THREE.Vector3();
   for(let it=0;it<3;it++){
