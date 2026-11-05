@@ -70,3 +70,5 @@ html,body{overflow-x:clip}
 .atelier-inkhint{text-align:center;color:var(--desk-color-17);font-size:12.5px;font-style:italic;margin:10px 0 0}
 @keyframes dipPulse{0%,100%{box-shadow:0 0 0 0 rgba(201,164,92,0)}50%{box-shadow:0 0 0 5px rgba(201,164,92,.28)}}
 .dip-pulse{animation:dipPulse 1.6s ease-in-out infinite;border-color:var(--desk-color-17)!important;color:var(--desk-color-17)}
+
+.paper-fields{transform-origin:0 0;will-change:transform}
