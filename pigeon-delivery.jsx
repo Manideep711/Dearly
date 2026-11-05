@@ -131,8 +131,8 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
    pose.applied=true;
   }
   clock.current+=d;if(phase==='arrival'){const t=Math.min(clock.current/1.35,1);root.current.position.set(-5+4.65*t,1.6-1.3*t,-2+1.85*t);if(t===1)onPhase('landing')}else if(phase==='landing'){const t=Math.min(clock.current/.95,1),remaining=Math.pow(1-t,2);root.current.position.set(-.35*remaining,.3*remaining,-.15*remaining)}else root.current.position.set(0,THREE.MathUtils.damp(root.current.position.y,lift.current,8,d),0)
-  // Grounding clamp: while she is on the ground (anything but the
-  // arrival flight), no foot joint may end the frame below the floor —
+  // Grounding clamp (2026-11-05): while she is on the ground (anything
+  // but the arrival flight), no foot joint may end below the floor —
   // the clips' crouches and dips otherwise sink her legs into the
   // stage, worst at landing.
   if(phase!=='arrival'){let minY=Infinity;const wp=tmpV.current;for(const e of legEnds){e.getWorldPosition(wp);if(wp.y<minY)minY=wp.y}if(minY<.03)root.current.position.y+=.03-minY}
