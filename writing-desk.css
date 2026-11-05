@@ -130,3 +130,12 @@ html,body{overflow-x:clip}
 .atelier-inkhint{color:#33523f}
 .dip-pulse{animation:none;border-color:#33523f!important;color:#33523f;box-shadow:0 0 0 4px rgba(51,82,63,.18)}
 .atelier :is(button,input,textarea,summary):focus-visible{outline:2px solid #33523f!important;outline-offset:3px}
+
+/* Stationery house, second pass: the paper-adjustment labels were still
+   set in the old cream (--desk-color-1) and vanished on the cream page,
+   and the Upload button kept the old translucent dark fill. */
+.paper-adjustments label{color:#5c4f3a}
+.paper-picker button{background:#faf6ea;border:1px solid #c9bb9c;border-radius:2px}
+.paper-picker button:hover{background:#efe7d2}
+.paper-swatches button{background:transparent}
+.paper-swatches button[aria-pressed="true"]{background:#e9e2cd}
