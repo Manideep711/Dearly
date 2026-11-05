@@ -143,7 +143,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
   // anchor rides the bone instead; the scene-level capsule below is
   // placed on the anchor's true position every frame.
   const legR = useMemo(() => leg ? leg.children[0].position.length() * .105 : 0, [leg]);
-  const anchorRef = useRef(null), legCapsuleRef = useRef(null), tmpV = useRef(new THREE.Vector3()), tmpA = useRef(new THREE.Vector3()), tmpB = useRef(new THREE.Vector3());
+  const anchorRef = useRef(null), legCapsuleRef = useRef(null), tmpV = useRef(new THREE.Vector3()), tmpA = useRef(new THREE.Vector3()), tmpB = useRef(new THREE.Vector3()), tmpS = useRef(new THREE.Vector3());
   useEffect(() => {
     if (!leg || !legR) return;
     const anchor = new THREE.Object3D(); anchor.position.set(legR * 1.9, legR * 5.24, 0); leg.add(anchor);
@@ -191,7 +191,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
       anchor.getWorldPosition(tmpV.current); cap.parent.worldToLocal(tmpV.current); cap.position.copy(tmpV.current);
       lg.getWorldPosition(tmpA.current); knee.getWorldPosition(tmpB.current); cap.parent.worldToLocal(tmpA.current); cap.parent.worldToLocal(tmpB.current);
       const ab = tmpB.current.sub(tmpA.current), tt = THREE.MathUtils.clamp(tmpV.current.clone().sub(tmpA.current).dot(ab) / Math.max(1e-6, ab.lengthSq()), 0, 1), shin = tmpA.current.add(ab.multiplyScalar(tt)), dir = shin.sub(tmpV.current); dir.y = 0;
-      if (dir.lengthSq() > 1e-8) { dir.normalize(); cap.rotation.set(0, Math.atan2(dir.z, -dir.x), 0); }
+      if (dir.lengthSq() > 1e-8) { dir.normalize(); cap.rotation.set(0, Math.atan2(dir.z, -dir.x), 0); } const ws = anchor.getWorldScale(tmpS.current); cap.scale.setScalar((ws.x + ws.y + ws.z) / 3 * 1.25 / fit.scale);
     }
     const r = root.current; if (!r) return;
     const show = phase === 'arrival' || phase === 'attach' || phase === 'depart';
@@ -214,7 +214,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
     }
   });
   return <group ref={root} visible={false}><group scale={fit.scale} rotation-y={-.9} position={[-fit.center.x * fit.scale, -fit.min * fit.scale, -fit.center.z * fit.scale]}><primitive object={bird}/>
-    <group ref={legCapsuleRef} visible={attached} scale={1.25}>
+    <group ref={legCapsuleRef} visible={attached}>
       <mesh><cylinderGeometry args={[legR, legR, legR * 5.2, 28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>
       {[-2.35, 2.35].map(y => <mesh key={'r' + y} position={[0, y * legR, 0]} rotation-x={Math.PI / 2}><torusGeometry args={[legR * 1.03, legR * .11, 8, 28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>)}
       {[-1.3, 1.3].map(y => <mesh key={'s' + y} position={[-legR * .95, y * legR, 0]} rotation-x={Math.PI / 2} scale-x={1.4}><torusGeometry args={[legR * 1.5, legR * .17, 8, 36]}/><meshStandardMaterial color="#765132" roughness={.9} side={THREE.DoubleSide}/></mesh>)}
