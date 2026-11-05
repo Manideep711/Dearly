@@ -184,6 +184,11 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
   return Math.min((letter.body||'').length,row.start+col);
  }
  function tapBody(e){
+  // preventDefault first: the browser's own mousedown focus step runs
+  // after this handler and would clear the focus set here (the dip's
+  // timer-based refocus never faced it — which is why only the
+  // paper-click path broke when the editor moved off the paper).
+  e.preventDefault();
   const el=input.current;if(!el||!metrics)return;
   el.focus({preventScroll:true});
   const r=e.currentTarget.getBoundingClientRect();if(!r.width||!r.height)return;
@@ -202,7 +207,7 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  function move(e){if(!pen.current)return;const last=signatureDraft.current.at(-1),p=point(e);if(last.length>1200)return;const prev=last.at(-1);if(Math.hypot(p[0]-prev[0],p[1]-prev[1])<1.5)return;const strokes=signatureDraft.current.map(s=>[...s]);strokes.at(-1).push(p);signatureDraft.current=strokes;setSignaturePreview(strokes)}
  function fit(){const ctx=document.createElement('canvas').getContext('2d');let fontSize=Number(letter.fontSize)||72;while(fontSize>32&&layoutLetter(ctx,{...letter,fontSize}).overflow)fontSize-=2;onChange({...letter,fontSize})}
  return <main className="atelier"><nav><span className="brand">dearly<span>Writing room</span></span><span className="atelier-saved">Saved on this device</span></nav><div className="atelier-heading"><h1>Your letter</h1></div>
- <ModeSwitch mode="hand" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div className="atelier-stage"><Canvas shadows dpr={[1,1.25]} camera={{fov:33,position:[0,-1.05,13],near:.1,far:120}}><Suspense fallback={null}><DeskScene letter={letter} onMetrics={receiveMetrics} onBounds={receiveBounds} onDip={doDip} dip={dip} onFocus={()=>input.current?.focus()} inkRef={inkRef.current} caret={caret} focused={focused} pulse={pulse} follow={followOn&&!holdView} mode={lightMode} lampAngle={lampAngle} onLampAngle={setLampAngle}/></Suspense></Canvas>
+ <ModeSwitch mode="hand" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div className="atelier-stage" onClick={e=>{if(e.target.tagName==='CANVAS'){const el=input.current;if(el&&document.activeElement!==el){el.focus({preventScroll:true});const v=el.value.length;el.setSelectionRange(v,v);setCaret(v)}}}}><Canvas shadows dpr={[1,1.25]} camera={{fov:33,position:[0,-1.05,13],near:.1,far:120}}><Suspense fallback={null}><DeskScene letter={letter} onMetrics={receiveMetrics} onBounds={receiveBounds} onDip={doDip} dip={dip} onFocus={()=>input.current?.focus()} inkRef={inkRef.current} caret={caret} focused={focused} pulse={pulse} follow={followOn&&!holdView} mode={lightMode} lampAngle={lampAngle} onLampAngle={setLampAngle}/></Suspense></Canvas>
  {bounds&&metrics&&<div className="paper-fields" style={{left:0,top:0,width:PAGE.width*scale,height:PAGE.height*scale,transform:fieldTransform}}>
  <input aria-label="Recipient" placeholder="My dearest," value={letter.to} maxLength={60} style={{left:160*scale,top:(230-72)*scale,width:1216*scale,height:95*scale,fontSize:72*scale}} onChange={e=>onChange({...letter,to:e.target.value})}/>
  {!letter.body&&!focused&&<span className="atelier-placeholder" style={{left:160*scale,top:310*scale,fontSize:62*scale}}>What have you been meaning to say?</span>}
