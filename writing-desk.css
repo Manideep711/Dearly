@@ -151,3 +151,7 @@ html,body{overflow-x:clip}
  .atelier-stage.writing-live{position:fixed;inset:0;height:100vh;height:100dvh;max-height:none;z-index:40}
  .atelier-stage.writing-live>button{top:10px!important;bottom:auto!important}
 }
+
+/* Nothing on the paper itself ever wears a focus outline — the theme's
+   green ring is for the shop chrome's real controls only. */
+.paper-fields :is(input,textarea):focus-visible{outline:none!important;outline-offset:0}

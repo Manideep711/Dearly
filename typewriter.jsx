@@ -97,16 +97,27 @@ function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
  return <><color attach="background" args={['#171310']}/><ambientLight intensity={.5} color="#ffe7c4"/><hemisphereLight args={['#5d4a30','#14100b',.95]}/><directionalLight position={[-5,1.5,5]} intensity={1.35} color="#ffb066" castShadow shadow-mapSize={[512,512]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-2.62,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group position={[-.3,.53,.2]}><Candle/></group><Machine carriage={carriage} paperGroup={paperGroup} typebar={typebar}/></>
 }
 export default function TypewriterDesk({letter,onChange,onPreview,onSwitchMode}){
- const input=useRef(),pulse=useRef(0),lastClack=useRef(0);
+ const input=useRef(),pulse=useRef(0),lastClack=useRef(0),stageRef=useRef();
  const[metrics,setMetrics]=useState(null),[caret,setCaret]=useState(0),[focused,setFocused]=useState(false),[soundOn,setSoundOn]=useState(()=>{try{return localStorage.getItem('dearly-sound')!=='off'}catch(e){return true}});
  const soundRef=useRef(soundOn);soundRef.current=soundOn;
+ // Same visual-viewport sizing as the quill desk: while writing, the
+ // full-screen stage matches the visible area above the keyboard, so
+ // the machine is framed for what the writer can actually see.
+ useEffect(()=>{
+  const el=stageRef.current,vv=window.visualViewport;
+  if(!el||!vv)return;
+  if(!focused){el.style.height='';el.style.top='';return}
+  const apply=()=>{el.style.height=vv.height+'px';el.style.top=vv.offsetTop+'px'};
+  apply();vv.addEventListener('resize',apply);vv.addEventListener('scroll',apply);
+  return()=>{vv.removeEventListener('resize',apply);vv.removeEventListener('scroll',apply);el.style.height='';el.style.top=''};
+ },[focused]);
  const receiveMetrics=useCallback((_,m)=>setMetrics(m),[]);
  function bodyChanged(e){const v=e.target.value;setCaret(e.target.selectionStart??v.length);pulse.current=performance.now();
   if(pulse.current-lastClack.current>35){lastClack.current=pulse.current;sfx.on=soundRef.current;sfx.clack()}
   onChange({...letter,body:v})}
  function toggleSound(){const v=!soundOn;setSoundOn(v);soundRef.current=v;sfx.on=v;try{localStorage.setItem('dearly-sound',v?'on':'off')}catch(e){}if(v){sfx.ensure();sfx.clack()}}
  return <main className="atelier"><nav><span className="brand">dearly<span>Writing room</span></span><span className="atelier-saved">Saved on this device</span></nav><div className="atelier-heading"><h1>Your letter</h1></div>
- <ModeSwitch mode="type" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div className={focused?'atelier-stage writing-live':'atelier-stage'} onClick={()=>{const el=input.current;if(el){el.focus();const v=el.value.length;el.setSelectionRange(v,v);setCaret(v)}}}><Canvas shadows dpr={[1,1.25]} camera={{fov:35,position:[0,.25,11],near:.1,far:120}}><Suspense fallback={null}><TypeScene letter={letter} onMetrics={receiveMetrics} caret={caret} pulse={pulse} soundRef={soundRef}/></Suspense></Canvas>
+ <ModeSwitch mode="type" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div ref={stageRef} className={focused?'atelier-stage writing-live':'atelier-stage'} onClick={()=>{const el=input.current;if(el){el.focus();const v=el.value.length;el.setSelectionRange(v,v);setCaret(v)}}}><Canvas shadows dpr={[1,1.25]} camera={{fov:35,position:[0,.25,11],near:.1,far:120}}><Suspense fallback={null}><TypeScene letter={letter} onMetrics={receiveMetrics} caret={caret} pulse={pulse} soundRef={soundRef}/></Suspense></Canvas>
  <textarea ref={input} aria-label="Write your letter" spellCheck="false" value={letter.body} maxLength={1500} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} onChange={bodyChanged} onSelect={e=>setCaret(e.target.selectionStart??0)} style={{position:'fixed',left:8,bottom:8,width:16,height:16,opacity:0,resize:'none',border:0,padding:0,fontSize:16,caretColor:'transparent'}}/>
  {focused&&<button type="button" onPointerDown={e=>e.preventDefault()} onPointerUp={()=>input.current?.blur()} style={{position:'absolute',left:10,top:10,zIndex:6,padding:'8px 14px',borderRadius:999,border:'1px solid rgba(230,205,160,.4)',background:'rgba(20,14,8,.72)',color:'#e9dcc0',fontSize:13,cursor:'pointer',backdropFilter:'blur(3px)'}}>Done</button>}
  </div><section className="atelier-controls"><div className="atelier-spacing"><label>Letter size <input type="range" aria-label="Letter size" min="32" max="88" step="2" value={letter.fontSize||72} onChange={e=>onChange({...letter,fontSize:Number(e.target.value)})}/></label><label>Line spacing <input type="range" aria-label="Line spacing" min="1.28" max="1.8" step=".05" value={letter.lineSpacing||1.35} onChange={e=>onChange({...letter,lineSpacing:Number(e.target.value)})}/></label><span>{metrics?.fill||0}% of the page</span></div>
