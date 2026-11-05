@@ -18,3 +18,8 @@
 .focused-reading .line-navigation{font-size:12px;letter-spacing:normal}
 .focused-reading .bottom{bottom:16px}.focused-reading .controls button{font-size:12px}
 .focused-reading header .brand span{display:none}
+
+/* The pigeon stage keeps only a whisper of the shared vignette: the
+   full-strength version darkened the top of the frame and fought the
+   graded backdrop behind the bird. */
+.pigeon-delivery .vignette{background:linear-gradient(rgba(21,23,16,.16),transparent 30%,transparent 72%,rgba(21,23,16,.32))}
