@@ -78,3 +78,11 @@ html,body{overflow-x:clip}
    they read as suggestions, but actually visible. */
 .paper-fields input::placeholder{color:#4a3a26b8}
 .atelier-placeholder{color:#4a3a26b8}
+
+/* The desk switch: a segmented choice under the heading in both rooms. */
+.atelier-mode{display:flex;justify-content:center;gap:0;margin:14px auto 4px;padding:0 20px}
+.atelier-mode button{flex:0 1 auto;min-width:148px;padding:12px 20px;font-size:14.5px;letter-spacing:.02em;color:var(--desk-color-1);background:rgba(233,211,163,.06);border:1px solid #9b8c6d66;cursor:pointer}
+.atelier-mode button:first-child{border-radius:999px 0 0 999px;border-right:0}
+.atelier-mode button:last-child{border-radius:0 999px 999px 0}
+.atelier-mode button[aria-pressed="true"]{background:var(--desk-color-17);color:#241c10;font-weight:600;border-color:var(--desk-color-17)}
+@media(max-width:700px){.atelier-mode{margin-top:10px}.atelier-mode button{min-width:0;flex:1 1 0;max-width:210px;padding:12px 8px;font-size:14px}}
