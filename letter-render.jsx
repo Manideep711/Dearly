@@ -29,7 +29,7 @@ export function useLetterTexture(letter,onLayout,live=false,inkRef=null){
     const arr=row.text.split(/(\s+)/).filter(w=>w.trim()).map((w,i)=>{
      const key=row.start+'|'+i+'|'+w;let rec=inkRef.words.get(key);
      if(!rec){rec={level:inkRef.charge(),born:now};inkRef.words.set(key,rec)}
-     return {a:.34+.66*Math.pow(Math.max(0,Math.min(1,rec.level)),1.15),wet:now-rec.born<2800};
+     const wet=now-rec.born<2800;return {a:(.34+.66*Math.pow(Math.max(0,Math.min(1,rec.level)),1.15))*(wet?1.1:.86),wet};
     });
     wordStyles.set(row,arr);
    }
