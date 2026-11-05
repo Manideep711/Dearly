@@ -86,3 +86,47 @@ html,body{overflow-x:clip}
 .atelier-mode button:last-child{border-radius:0 999px 999px 0}
 .atelier-mode button[aria-pressed="true"]{background:var(--desk-color-17);color:#241c10;font-weight:600;border-color:var(--desk-color-17)}
 @media(max-width:700px){.atelier-mode{margin-top:10px}.atelier-mode button{min-width:0;flex:1 1 0;max-width:210px;padding:12px 8px;font-size:14px}}
+
+/* ——— Stationery house ———
+   The writing room re-skinned as a fine stationer's shop: warm cream
+   chrome, ink-brown type, hairline rules, one deep-green accent. The 3D
+   scenes stay candlelit; stepping into them should feel like walking
+   from the bright shop into the back room. Logic untouched — skin only. */
+.atelier{background:#f2ecdd;color:#2b2118}
+.atelier nav .brand{color:#2b2118}
+.atelier .brand span{color:#6f6046}
+.atelier-saved{color:#6f6046;opacity:1;text-transform:uppercase;letter-spacing:.18em;font-size:10px}
+.atelier-heading{border-bottom:1px solid #d9cfb6;padding-bottom:16px}
+.atelier-heading h1{font-style:normal;color:#2b2118}
+.atelier-heading p{color:#6f6046}
+.atelier-mode button{border-radius:0;background:transparent;border-color:#c9bb9c;color:#2b2118;text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:500}
+.atelier-mode button:first-child{border-radius:2px 0 0 2px}
+.atelier-mode button:last-child{border-radius:0 2px 2px 0}
+.atelier-mode button[aria-pressed="true"]{background:#2b2118;color:#f6f1e2;border-color:#2b2118;font-weight:600}
+.paper-picker h2{color:#2b2118}
+.paper-picker p{color:#6f6046}
+.paper-picker button{color:#2b2118}
+.paper-swatches button{border-color:#c9bb9c;color:#2b2118}
+.paper-swatches button[aria-pressed="true"]{border:2px solid #33523f;background:#e9e2cd}
+.paper-adjustments input{accent-color:#33523f}
+.atelier-stage{border-top:1px solid #d9cfb6;border-bottom:1px solid #d9cfb6}
+.atelier-spacing label{color:#5c4f3a}
+.atelier-spacing>span{color:#6f6046}
+.atelier-spacing input{accent-color:#33523f}
+.atelier-spacing input[type="text"]{background:#fffdf6;color:#2b2118;border:1px solid #c9bb9c;padding:8px 10px;border-radius:2px}
+.atelier-actions button{background:#faf6ea;border:1px solid #c9bb9c;color:#2b2118;border-radius:2px;backdrop-filter:none}
+.atelier-actions button:hover{background:#efe7d2}
+.atelier-actions .primary{background:#33523f;color:#f6f1e2;border-color:#33523f}
+.atelier-actions .primary:hover{background:#2a4434}
+.atelier-hint{color:#6f6046}
+.atelier-overflow{color:#8a4b2a}
+.atelier-editor,.signature-panel{background:#faf6ea;border-color:#d9cfb6;color:#2b2118}
+.atelier-editor label{color:#5c4f3a}
+.atelier-editor textarea{background:#fffdf6;color:#2b2118;border:1px solid #d9cfb6}
+.signature-panel>p{color:#2b2118;font-style:normal}
+.signature-panel button,.atelier-editor button{background:#faf6ea;border:1px solid #c9bb9c;color:#2b2118;border-radius:2px;padding:10px 16px}
+.ink-meter{background:#ddd2b8}
+.ink-meter i{background:linear-gradient(90deg,#33523f,#5c7a63)}
+.atelier-inkhint{color:#33523f}
+.dip-pulse{animation:none;border-color:#33523f!important;color:#33523f;box-shadow:0 0 0 4px rgba(51,82,63,.18)}
+.atelier :is(button,input,textarea,summary):focus-visible{outline:2px solid #33523f!important;outline-offset:3px}

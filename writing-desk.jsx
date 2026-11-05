@@ -152,7 +152,7 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
 // writer meets - the old switch sat at the end of the actions row, below
 // the stage, and on a phone it was effectively buried.
 export function ModeSwitch({mode,onSwitchMode}){
- return <div className="atelier-mode" role="group" aria-label="Choose how to write"><button type="button" aria-pressed={mode==='hand'} onClick={()=>onSwitchMode('hand')}>✒️ Quill &amp; ink</button><button type="button" aria-pressed={mode==='type'} onClick={()=>onSwitchMode('type')}>⌨️ Typewriter</button></div>
+ return <div className="atelier-mode" role="group" aria-label="Choose how to write"><button type="button" aria-pressed={mode==='hand'} onClick={()=>onSwitchMode('hand')}>Quill &amp; ink</button><button type="button" aria-pressed={mode==='type'} onClick={()=>onSwitchMode('type')}>Typewriter</button></div>
 }
 function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  const input=useRef(),dipTimer=useRef(),pen=useRef(false),signatureDraft=useRef([]);
