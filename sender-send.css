@@ -1,5 +1,6 @@
 /* Sender finish scene — layout only; buttons, brand, caption, progress,
    notice and vignette reuse the shared styles in style.css. */
+.send-experience { touch-action: none; }
 .send-experience > div:first-child { position: absolute !important; inset: 0; }
 .send-experience header { z-index: 3; }
 .send-experience .caption { z-index: 2; text-shadow: 0 1px 14px rgba(10,10,8,.9), 0 0 3px rgba(10,10,8,.9); }
