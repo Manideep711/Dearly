@@ -1,5 +1,5 @@
 import React,{Suspense,useEffect,useMemo,useRef,useState} from 'react';
-import {Canvas,useFrame,useLoader} from '@react-three/fiber';
+import {Canvas,useFrame,useLoader,useThree} from '@react-three/fiber';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone} from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three';
@@ -223,6 +223,21 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
   return <group ref={root} visible={false}><group scale={fit.scale} rotation-y={-.9} position={[-fit.center.x * fit.scale, -fit.min * fit.scale, -fit.center.z * fit.scale]}><primitive object={bird}/></group></group>;
 }
 
+// The stage was blocked for a landscape frame (bird lands at x=2.35, the
+// sheet spans to x=-3.87). On a portrait phone that framing pushed the
+// bird clean off-screen. Pull the camera back until the whole stage
+// fits the width; landscape keeps the original distance.
+function FitCamera() {
+  const camera = useThree(s => s.camera), size = useThree(s => s.size);
+  useEffect(() => {
+    const aspect = size.width / Math.max(1, size.height);
+    const fitZ = 4.15 / (Math.tan(THREE.MathUtils.degToRad(21)) * aspect);
+    camera.position.set(.25, .4, Math.max(10.4, fitZ));
+    camera.updateProjectionMatrix();
+  }, [camera, size]);
+  return null;
+}
+
 function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, legTarget}) {
   const tex = useLetterTexture(letter, undefined, true);
   const surface = useSurface();
@@ -240,7 +255,7 @@ function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, le
 }
 
 const CAPTIONS = {
-  hold: ['Hold it a moment longer.', 'When you are ready, roll it up for the journey.'],
+  hold: ['Hold it a moment longer.', 'Scroll, swipe up, or tap the button to roll it up for the journey.'],
   roll: ['Roll it up, tight and true.', 'Every word you wrote, curled safe inside.'],
   capsule: ['Into the brass capsule.', 'The same capsule your reader will find on her leg.'],
   arrival: ['A little messenger. A long way home.', 'She has come for your words.'],
@@ -273,8 +288,16 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
     catch { setNotice(url); }
   }
   const step = STEP_OF[phase];
-  return <div className="experience send-experience">
+  // Scroll-to-roll: the receiver scrolls to unroll, so the sender scrolls
+  // to roll — same gesture, run backwards. The button stays for everyone else.
+  const touchY = useRef(null);
+  const gestureRoll = () => { if (phase === 'hold') setPhase('roll'); };
+  return <div className="experience send-experience"
+    onWheel={e => { if (e.deltaY > 24) gestureRoll(); }}
+    onTouchStart={e => { touchY.current = e.touches[0].clientY; }}
+    onTouchEnd={e => { if (touchY.current !== null && touchY.current - e.changedTouches[0].clientY > 48) gestureRoll(); touchY.current = null; }}>
     <Canvas shadows dpr={[1, 2]} camera={{position: [0, .4, 10.4], fov: 42}} gl={{antialias: true}}>
+      <FitCamera/>
       <Suspense fallback={null}><SendScene letter={letter} phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} onLanded={() => setPhase('attach')} legTarget={legTarget}/></Suspense>
     </Canvas>
     <div className="vignette"/>
