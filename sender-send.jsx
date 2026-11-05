@@ -98,7 +98,7 @@ function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
     if (!show) return;
     if (tied && legTarget.current) {
       // Fly to the leg; the bone-attached capsule takes over on arrival.
-      const target = legTarget.current.clone().add(new THREE.Vector3(-.02, -.12, .05));
+      const target = legTarget.current.clone().add(new THREE.Vector3(-.02, .04, .05));
       g.position.lerp(target, 1 - Math.exp(-.016 * 6));
     } else {
       g.position.lerp(CAPSULE_POS, 1 - Math.exp(-.016 * 4));
@@ -131,19 +131,23 @@ function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
 // is strapped on it can never detach, float, or lag behind the bird.
 function buildLegCapsule(bird) {
   const leg = bird.getObjectByName('L_leg_077'); if (!leg) return null;
-  const length = leg.children[0].position.length(), r = length * .14;
+  // Slimmer and more polished than the first version (r .14 x 3.8 long,
+  // dull brass) which read as a stubby pawn next to the desk capsule.
+  // Same builder as the receiver's, so the capsule your reader finds is
+  // the capsule you tied on.
+  const length = leg.children[0].position.length(), r = length * .105;
   const attachment = new THREE.Group(); attachment.position.y = length * .55;
-  const brass = new THREE.MeshStandardMaterial({color: '#c2a16a', metalness: .55, roughness: .4});
+  const brass = new THREE.MeshStandardMaterial({color: '#c9a45c', metalness: .85, roughness: .32});
   const leather = new THREE.MeshStandardMaterial({color: '#765132', roughness: .9, side: THREE.DoubleSide});
-  const tube = new THREE.Mesh(new THREE.CylinderGeometry(r, r, r * 3.8, 32), brass);
-  tube.position.x = r * 1.65; attachment.add(tube);
-  for (const y of [-1.55, 1.55]) {
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, r * .09, 8, 32), brass);
-    rim.rotation.x = Math.PI / 2; rim.position.set(r * 1.65, y * r, 0); attachment.add(rim);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(r, r, r * 5.2, 32), brass);
+  tube.position.x = r * 1.9; attachment.add(tube);
+  for (const y of [-2.35, 2.35]) {
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, r * .1, 8, 32), brass);
+    rim.rotation.x = Math.PI / 2; rim.position.set(r * 1.9, y * r, 0); attachment.add(rim);
   }
-  for (const y of [-.85, .85]) {
-    const strap = new THREE.Mesh(new THREE.TorusGeometry(r * 1.35, r * .15, 8, 40), leather);
-    strap.rotation.x = Math.PI / 2; strap.scale.x = 1.43; strap.position.set(r * .8, y * r, 0); attachment.add(strap);
+  for (const y of [-1.3, 1.3]) {
+    const strap = new THREE.Mesh(new THREE.TorusGeometry(r * 1.5, r * .17, 8, 40), leather);
+    strap.rotation.x = Math.PI / 2; strap.scale.x = 1.4; strap.position.set(r * .95, y * r, 0); attachment.add(strap);
   }
   // The sender camera sits farther back than the receiver's; scale the
   // whole attachment up so the tied capsule actually reads on screen.
@@ -237,7 +241,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
 // camera drifts between shots, and on portrait screens it pulls back
 // until the shot fits the width (the first framing was landscape-only
 // and pushed the landed pigeon clean off a phone screen).
-const PHASE_CAM = {hold: [-1.55, 2.55, 8.6], roll: [-1.55, 2.55, 8.6], capsule: [-.85, 2.35, 7.2], arrival: [1.05, 2.3, 7.2], attach: [1.05, 2.3, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
+const PHASE_CAM = {hold: [-1.55, 2.55, 8.6], roll: [-1.55, 2.55, 8.6], capsule: [-.35, 1.95, 7.2], arrival: [1.05, 2.3, 7.2], attach: [1.05, 2.3, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
 function PhaseCamera({phase}) {
   const camera = useThree(s => s.camera), size = useThree(s => s.size);
   useFrame((_, dt) => {
