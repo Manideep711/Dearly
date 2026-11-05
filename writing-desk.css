@@ -53,7 +53,7 @@ html,body{overflow-x:clip}
 .paper-adjustments{gap:8px}
 .paper-adjustments label{min-width:100%;margin:8px 0}
 .paper-picker p{font-size:12px}
-.atelier-stage{height:960px;min-height:960px}
+.atelier-stage{height:900px;min-height:900px}
 }
 @media(max-width:700px){
 .atelier nav{padding:0 20px;margin:0}.atelier-heading{padding:0 20px;margin-top:24px}.atelier-heading h1{font-size:32px}
