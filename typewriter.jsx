@@ -44,7 +44,7 @@ function Machine({carriage,paperGroup,typebar}){
 function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
  const tex=useLetterTexture(letter,onMetrics,true,null),wood=useWood();
  const {camera,size}=useThree();
- const carriage=useRef(),paperGroup=useRef(),paperMesh=useRef(),typebar=useRef(),targets=useRef({x:0,y:-1.83,row:-1});
+ const carriage=useRef(),paperGroup=useRef(),paperMesh=useRef(),typebar=useRef(),targets=useRef({x:0,y:-1.65,row:-1});
  // The paper itself lives inside the carriage group; build it once the
  // group exists and keep its texture current.
  useEffect(()=>{
@@ -81,7 +81,11 @@ function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
   const ly=(.5-row.baseline/PAGE.height)*PH;
   const prev=targets.current;
   if(prev.row>=0&&idx>prev.row&&soundRef.current){sfx.on=true;sfx.ding()}
-  targets.current={x:-((px/PAGE.width-.5)*PW),y:.12-ly,row:idx};
+  // The strike line rides at .30, not at the platen's centre: the roller
+  // (radius .17) hides whatever sits within its silhouette, so a baseline
+  // at .12 left the line being typed half-sunk behind it. At .30 the
+  // current line's ink clears the roller and reads in full.
+  targets.current={x:-((px/PAGE.width-.5)*PW),y:.30-ly,row:idx};
   if(prev.row<0){if(carriage.current)carriage.current.position.x=targets.current.x;if(paperGroup.current)paperGroup.current.position.y=targets.current.y}
  },[tex,caret,letter,soundRef]);
  useFrame((_,dt)=>{
