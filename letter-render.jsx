@@ -6,7 +6,7 @@ import {layoutLetter,PAGE} from './letter-layout';
 import {paperSource} from './paper-picker';
 export function useLetterTexture(letter,onLayout,live=false,inkRef=null){
  const paper=useLoader(THREE.TextureLoader,paperSource(letter));const[font,setFont]=useState(0);
- useEffect(()=>{let alive=true;document.fonts.load('72px "Mrs Saint Delafield"').then(()=>{if(alive)setFont(1)});return()=>{alive=false}},[]);
+ useEffect(()=>{let alive=true;Promise.all([document.fonts.load('72px "Mrs Saint Delafield"'),document.fonts.load('72px "Special Elite"')]).then(()=>{if(alive)setFont(1)});return()=>{alive=false}},[]);
  // Background processing is cached independently of typing.
  const paperBase=useMemo(()=>{
   const c=document.createElement('canvas');c.width=PAGE.width;c.height=PAGE.height;const x=c.getContext('2d');
@@ -18,7 +18,7 @@ export function useLetterTexture(letter,onLayout,live=false,inkRef=null){
  },[paper,letter.paperZoom,letter.paperX,letter.paperY,letter.paperSoftness]);
  const texture=useMemo(()=>{
   const c=document.createElement('canvas');c.width=PAGE.width;c.height=PAGE.height;const x=c.getContext('2d');x.drawImage(paperBase,0,0);
-  const layout=layoutLetter(x,letter),ink=createInkLayer(c.width,c.height,letter.ink||'#39352e');
+  const layout=layoutLetter(x,letter),ink=createInkLayer(c.width,c.height,letter.ink||'#39352e',letter.face);
   // Live ink (desk only): each body word remembers the charge it was written
   // with and stays "wet" (darker, slightly bleeding) for its first seconds.
   let wordStyles=null;
