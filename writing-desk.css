@@ -72,3 +72,9 @@ html,body{overflow-x:clip}
 .dip-pulse{animation:dipPulse 1.6s ease-in-out infinite;border-color:var(--desk-color-17)!important;color:var(--desk-color-17)}
 
 .paper-fields{transform-origin:0 0;will-change:transform}
+/* The paper's placeholder lines ("My dearest,", "Yours, always", the body
+   prompt) were drawn in a 53% washed brown that read as grey mush on the
+   cream paper. Warm sepia with real presence - still lighter than ink, so
+   they read as suggestions, but actually visible. */
+.paper-fields input::placeholder{color:#4a3a26b8}
+.atelier-placeholder{color:#4a3a26b8}
