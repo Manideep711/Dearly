@@ -72,26 +72,39 @@ export function Candle(){
 }
 function Lamp({angle,onAngle}){
  const drag=useRef(null);
- // A classic green-enamel desk lamp standing where the candle stands. Its
- // head leans in over the page's left edge and carries the bulb light with
- // it, so the Lamp angle slider visibly swings the pool of light across
- // the letter.
- const a=THREE.MathUtils.degToRad(angle||0),enamel='#42604c',brass='#9a885d';
- return <group position={[-2.9,-3.15,.75]} onPointerDown={e=>{e.stopPropagation();drag.current={x:e.clientX,a:angle||0};try{e.target.setPointerCapture(e.pointerId)}catch(err){}}} onPointerMove={e=>{if(drag.current&&onAngle)onAngle(Math.max(-32,Math.min(40,drag.current.a+(e.clientX-drag.current.x)*.25)))}} onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>
-  <mesh position-y={.035} castShadow><cylinderGeometry args={[.3,.38,.07,24]}/><meshStandardMaterial color={enamel} metalness={.35} roughness={.5}/></mesh>
-  <mesh position-y={.1} castShadow><sphereGeometry args={[.13,16,12]}/><meshStandardMaterial color={brass} metalness={.75} roughness={.35}/></mesh>
-  <mesh position-y={.55} castShadow><cylinderGeometry args={[.065,.065,1.05,12]}/><meshStandardMaterial color={enamel} metalness={.35} roughness={.5}/></mesh>
-  <group position-y={1.12} rotation-z={a}>
-   <mesh castShadow><sphereGeometry args={[.09,14,12]}/><meshStandardMaterial color={brass} metalness={.75} roughness={.35}/></mesh>
-   <mesh position={[.25,.17,0]} rotation-z={-.97} castShadow><cylinderGeometry args={[.055,.055,.61,10]}/><meshStandardMaterial color={enamel} metalness={.35} roughness={.5}/></mesh>
-   <mesh position={[.5,.34,0]} castShadow><sphereGeometry args={[.075,14,12]}/><meshStandardMaterial color={brass} metalness={.75} roughness={.35}/></mesh>
-   <mesh position={[.64,.41,0]} rotation-z={-1.11} castShadow><cylinderGeometry args={[.045,.045,.32,10]}/><meshStandardMaterial color={enamel} metalness={.35} roughness={.5}/></mesh>
-   <group position={[.78,.48,0]} rotation-z={-.75}>
-    <mesh castShadow><cylinderGeometry args={[.085,.31,.48,24,1,true]}/><meshStandardMaterial color={enamel} metalness={.4} roughness={.45} side={THREE.DoubleSide}/></mesh>
-    <mesh position-y={.26} castShadow><cylinderGeometry args={[.05,.085,.06,16]}/><meshStandardMaterial color={brass} metalness={.75} roughness={.35}/></mesh>
-    <mesh position-y={-.1}><sphereGeometry args={[.075,12,10]}/><meshBasicMaterial color="#fff3cf"/></mesh>
-    <pointLight position={[0,-.24,.02]} color="#ffdca8" intensity={22} distance={0} decay={2}/>
-   </group>
+ // An anglepoise, modelled on the real thing: heavy disc base, paired
+ // arms, a coil spring, and a visible bolt through every joint — base,
+ // elbow and head — because on a real lamp every bolted joint moves.
+ // One input (the Lamp angle slider, or dragging the lamp itself)
+ // drives a two-bone solve for the head, so all three joints hinge
+ // together and the pool of light travels across the page.
+ const a=THREE.MathUtils.degToRad(Math.max(-32,Math.min(40,angle||0)));
+ const black='#1e1e20',steel='#83878c',dark='#3a3b3e';
+ const B={x:0,y:.22},L1=1.02,L2=.92;
+ const T={x:.92+a*.55,y:1.30-a*.30};
+ const dx=T.x-B.x,dy=T.y-B.y,dd=Math.hypot(dx,dy),d=Math.min(L1+L2-.001,dd);
+ const phi=Math.atan2(dy,dx),cosA=Math.max(-1,Math.min(1,(L1*L1+d*d-L2*L2)/(2*L1*d)));
+ const th=phi+Math.acos(cosA);
+ const E={x:B.x+L1*Math.cos(th),y:B.y+L1*Math.sin(th)},H={x:B.x+dx*(d/dd),y:B.y+dy*(d/dd)};
+ const segP=(p,q)=>({pos:[(p.x+q.x)/2,(p.y+q.y)/2],rot:Math.atan2(q.y-p.y,q.x-p.x)-Math.PI/2,len:Math.hypot(q.x-p.x,q.y-p.y)});
+ const s1=segP(B,E),s2=segP(E,H),sS=segP({x:B.x-.1,y:B.y+.03},{x:B.x+(E.x-B.x)*.55-.1,y:B.y+(E.y-B.y)*.55});
+ const arm=(s,z)=><mesh position={[s.pos[0],s.pos[1],z]} rotation-z={s.rot} castShadow><cylinderGeometry args={[.027,.027,s.len,10]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>;
+ const joint=(p,r)=><group position={[p.x,p.y,0]}><mesh rotation-x={Math.PI/2} castShadow><cylinderGeometry args={[r,r,.17,20]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh><mesh rotation-x={Math.PI/2} position-z={.1}><cylinderGeometry args={[r*.45,r*.45,.03,14]}/><meshStandardMaterial color={steel} metalness={.85} roughness={.3}/></mesh><mesh position-z={.118}><boxGeometry args={[r*.62,.014,.012]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh></group>;
+ return <group position={[-2.9,-3.15,.75]} onPointerDown={e=>{e.stopPropagation();drag.current={x:e.clientX,y:e.clientY,a:angle||0};try{e.target.setPointerCapture(e.pointerId)}catch(err){}}} onPointerMove={e=>{if(drag.current&&onAngle)onAngle(Math.max(-32,Math.min(40,drag.current.a+(e.clientX-drag.current.x)*.25+(drag.current.y-e.clientY)*.15)))}} onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>
+  <mesh position-y={.045} castShadow receiveShadow><cylinderGeometry args={[.34,.4,.09,28]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>
+  <mesh position-y={.12} castShadow><cylinderGeometry args={[.13,.17,.07,20]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>
+  {[.075,-.075].map(z=><mesh key={z} position={[0,.14,z]} castShadow><boxGeometry args={[.07,.26,.03]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>)}
+  {joint(B,.085)}
+  {arm(s1,.058)}{arm(s1,-.058)}{arm(s2,.058)}{arm(s2,-.058)}
+  <group position={[sS.pos[0],sS.pos[1],-.1]} rotation-z={sS.rot}><mesh><cylinderGeometry args={[.013,.013,sS.len,8]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.45}/></mesh>{[-.38,-.27,-.16,-.05,.06,.17,.28,.39].map(f=><mesh key={f} position-y={f*sS.len} rotation-x={Math.PI/2}><torusGeometry args={[.033,.0105,8,18]}/><meshStandardMaterial color={steel} metalness={.8} roughness={.35}/></mesh>)}</group>
+  {joint(E,.078)}
+  {joint(H,.07)}
+  <group position={[H.x,H.y,0]} rotation-z={-.62-a*.3}>
+   <mesh position-y={.31} castShadow><cylinderGeometry args={[.038,.038,.2,10]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>
+   <mesh castShadow><cylinderGeometry args={[.085,.30,.44,24,1,true]}/><meshStandardMaterial color={black} metalness={.4} roughness={.45} side={THREE.DoubleSide}/></mesh>
+   <mesh position-y={.25} castShadow><cylinderGeometry args={[.05,.085,.06,16]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh>
+   <mesh position-y={-.1}><sphereGeometry args={[.075,12,10]}/><meshBasicMaterial color="#fff3cf"/></mesh>
+   <pointLight position={[0,-.26,.02]} color="#ffdca8" intensity={22} distance={0} decay={2}/>
   </group>
  </group>
 }
