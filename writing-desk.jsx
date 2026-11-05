@@ -21,7 +21,23 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus}){
  const tex=useLetterTexture(letter,onMetrics,true),wood=useWood(),tip=useRef(pixelPoint(160,365)),paper=useRef();
  const {camera,size}=useThree();
  const geometry=useMemo(()=>{const g=new THREE.PlaneGeometry(PW,PH,90,120),p=g.attributes.position;for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i),edge=Math.pow(Math.abs(x)/(PW/2),9);p.setZ(i,.012*Math.sin(y*2)+edge*.055);p.setX(i,x+edge*.009*Math.sin(y*37))}g.computeVertexNormals();return g},[]);
- useEffect(()=>{camera.zoom=Math.min((size.width-32)/(size.width<700?5.1:7.0),(size.height-30)/6.35);camera.position.set(size.width<700?0:.25,0,12);camera.updateProjectionMatrix();const p0=new THREE.Vector3(-PW/2,PH/2,0).project(camera),p1=new THREE.Vector3(PW/2,-PH/2,0).project(camera);onBounds({left:(p0.x+1)*size.width/2,top:(1-p0.y)*size.height/2,width:(p1.x-p0.x)*size.width/2,height:(p0.y-p1.y)*size.height/2})},[camera,size,onBounds]);
+ // Fit the sheet by measuring its own projection: set a first-guess zoom,
+ // rescale by the ratio of available to projected size, then re-centre the
+ // camera on the projected centre. Self-correcting on any screen — the old
+ // fixed constants left the sheet overflowing and off-centre on phones.
+ useEffect(()=>{
+  camera.position.set(0,0,12);
+  camera.zoom=Math.min(size.width/(PW+.6),size.height/(PH+.6));camera.updateProjectionMatrix();
+  let p0=new THREE.Vector3(-PW/2,PH/2,0).project(camera),p1=new THREE.Vector3(PW/2,-PH/2,0).project(camera);
+  const wPx=Math.max(1,(p1.x-p0.x)*size.width/2),hPx=Math.max(1,(p0.y-p1.y)*size.height/2),k=Math.min((size.width-28)/wPx,(size.height-28)/hPx);
+  camera.zoom*=k;camera.updateProjectionMatrix();
+  p0=new THREE.Vector3(-PW/2,PH/2,0).project(camera);p1=new THREE.Vector3(PW/2,-PH/2,0).project(camera);
+  camera.position.x+=((p0.x+p1.x)/2)*size.width/(2*camera.zoom);
+  camera.position.y+=((p0.y+p1.y)/2)*size.height/(2*camera.zoom);
+  camera.updateProjectionMatrix();
+  p0=new THREE.Vector3(-PW/2,PH/2,0).project(camera);p1=new THREE.Vector3(PW/2,-PH/2,0).project(camera);
+  onBounds({left:(p0.x+1)*size.width/2,top:(1-p0.y)*size.height/2,width:(p1.x-p0.x)*size.width/2,height:(p0.y-p1.y)*size.height/2});
+ },[camera,size,onBounds]);
  useEffect(()=>{
   const rows=tex.userData.layout.bodyLines,row=rows.at(-1);
   if(row){const c=document.createElement('canvas').getContext('2d');c.font=`${row.size}px "Mrs Saint Delafield"`;tip.current.copy(pixelPoint(160+c.measureText(row.text).width,row.baseline))}
@@ -41,7 +57,7 @@ export default function WritingDesk({letter,onChange,onPreview}){
  function move(e){if(!pen.current)return;const last=signatureDraft.current.at(-1),p=point(e);if(last.length>1200)return;const prev=last.at(-1);if(Math.hypot(p[0]-prev[0],p[1]-prev[1])<1.5)return;const strokes=signatureDraft.current.map(s=>[...s]);strokes.at(-1).push(p);signatureDraft.current=strokes;setSignaturePreview(strokes)}
  function fit(){const ctx=document.createElement('canvas').getContext('2d');let fontSize=Number(letter.fontSize)||72;while(fontSize>32&&layoutLetter(ctx,{...letter,fontSize}).overflow)fontSize-=2;onChange({...letter,fontSize})}
  return <main className="atelier"><nav><span className="brand">dearly<span>Writing room</span></span><span className="atelier-saved">Saved on this device</span></nav><div className="atelier-heading"><h1>Your letter</h1></div>
- <PaperPicker letter={letter} onChange={onChange}/><div className="atelier-stage"><Canvas orthographic shadows dpr={[1,1.5]} camera={{position:[.45,0,12],zoom:90,near:.1,far:100}}><Suspense fallback={null}><DeskScene letter={letter} onMetrics={receiveMetrics} onBounds={receiveBounds} onDip={doDip} dip={dip} onFocus={()=>input.current?.focus()}/></Suspense></Canvas>
+ <PaperPicker letter={letter} onChange={onChange}/><div className="atelier-stage"><Canvas orthographic shadows dpr={[1,1.5]} camera={{position:[0,0,12],zoom:90,near:.1,far:100}}><Suspense fallback={null}><DeskScene letter={letter} onMetrics={receiveMetrics} onBounds={receiveBounds} onDip={doDip} dip={dip} onFocus={()=>input.current?.focus()}/></Suspense></Canvas>
  {bounds&&metrics&&<div className="paper-fields" style={{left:bounds.left,top:bounds.top,width:bounds.width,height:bounds.height}}>
  <input aria-label="Recipient" placeholder="My dearest," value={letter.to} maxLength={60} style={{left:160*scale,top:(230-72)*scale,width:1216*scale,height:95*scale,fontSize:72*scale}} onChange={e=>onChange({...letter,to:e.target.value})}/>
  {!letter.body&&!focused&&<span className="atelier-placeholder" style={{left:160*scale,top:310*scale,fontSize:62*scale}}>What have you been meaning to say?</span>}
