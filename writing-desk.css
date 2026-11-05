@@ -139,3 +139,6 @@ html,body{overflow-x:clip}
 .paper-picker button:hover{background:#efe7d2}
 .paper-swatches button{background:transparent}
 .paper-swatches button[aria-pressed="true"]{background:#e9e2cd}
+
+/* No native caret over the paper: the ink itself shows where you are. */
+.paper-fields input,.paper-fields textarea{caret-color:transparent!important}

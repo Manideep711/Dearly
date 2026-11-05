@@ -169,6 +169,29 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  function toggleFollow(){const v=!followOn;setFollowOn(v);try{localStorage.setItem('dearly-follow',v?'on':'off')}catch(e){}}
  function toggleSound(){const v=!soundOn;setSoundOn(v);soundOnRef.current=v;sfx.on=v;try{localStorage.setItem('dearly-sound',v?'on':'off')}catch(e){}if(v){sfx.ensure();sfx.scratch()}}
  const receiveMetrics=useCallback((_,m)=>setMetrics(m),[]),receiveBounds=useCallback(b=>setBounds(b),[]);
+ // The real editor is a tiny parked input (rendered below, fixed at the
+ // corner of the screen, under the keyboard): a full-size overlay field
+ // makes the phone draw its blue text-cursor handle in mid-air over the
+ // paper. Taps on the paper are translated into a caret position here,
+ // using the same laid-out lines the canvas draws.
+ const measureCtx=useRef(null);
+ function caretFromPoint(px,py){
+  const rows=metrics?.bodyLines||[];if(!rows.length)return (letter.body||'').length;
+  let row=rows[0],best=Infinity;for(const r of rows){const d=Math.abs((r.baseline-r.size*.35)-py);if(d<best){best=d;row=r}}
+  if(!measureCtx.current)measureCtx.current=document.createElement('canvas').getContext('2d');
+  const ctx=measureCtx.current;ctx.font=`${row.size}px ${faceFont(letter)}`;
+  let acc=PAGE.left,col=0;for(const ch of row.text){const w=ctx.measureText(ch).width;if(acc+w/2>px)break;acc+=w;col++}
+  return Math.min((letter.body||'').length,row.start+col);
+ }
+ function tapBody(e){
+  const el=input.current;if(!el||!metrics)return;
+  el.focus({preventScroll:true});
+  const r=e.currentTarget.getBoundingClientRect();if(!r.width||!r.height)return;
+  const fx=(e.clientX-r.left)/r.width,fy=(e.clientY-r.top)/r.height;
+  const top=PAGE.bodyTop-metrics.size,bottom=Math.min(metrics.signatureY-120,1790)+metrics.size;
+  const idx=caretFromPoint(PAGE.left+fx*(PAGE.right-PAGE.left),top+fy*(bottom-top));
+  el.setSelectionRange(idx,idx);setCaret(idx);
+ }
  const doDip=useCallback(()=>{sfx.on=soundOnRef.current;sfx.dip();setDip(true);clearTimeout(dipTimer.current);dipTimer.current=setTimeout(()=>{setDip(false);sinceDip.current=0;applyCharge(1);setInkTick(t=>t+1);input.current?.focus({preventScroll:true})},4000)},[]);
  useEffect(()=>()=>clearTimeout(dipTimer.current),[]);
  const corners=bounds?bounds.corners:null;
@@ -183,9 +206,10 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  {bounds&&metrics&&<div className="paper-fields" style={{left:0,top:0,width:PAGE.width*scale,height:PAGE.height*scale,transform:fieldTransform}}>
  <input aria-label="Recipient" placeholder="My dearest," value={letter.to} maxLength={60} style={{left:160*scale,top:(230-72)*scale,width:1216*scale,height:95*scale,fontSize:72*scale}} onChange={e=>onChange({...letter,to:e.target.value})}/>
  {!letter.body&&!focused&&<span className="atelier-placeholder" style={{left:160*scale,top:310*scale,fontSize:62*scale}}>What have you been meaning to say?</span>}
- <textarea ref={input} aria-label="Write your letter" spellCheck="false" value={letter.body} maxLength={1500} onFocus={()=>setFocused(true)} onBlur={()=>{setFocused(false);setHoldView(false)}} style={{left:160*scale,top:(PAGE.bodyTop-metrics.size)*scale,width:1216*scale,height:Math.max(150,(Math.min(metrics.signatureY-120,1790)-PAGE.bodyTop+metrics.size)*scale),fontSize:metrics.size*scale,lineHeight:metrics.spacing}} onChange={bodyChanged} onSelect={e=>setCaret(e.target.selectionStart??0)}/>
+ <div aria-hidden="true" onPointerDown={tapBody} style={{position:'absolute',pointerEvents:'auto',cursor:'text',left:160*scale,top:(PAGE.bodyTop-metrics.size)*scale,width:1216*scale,height:Math.max(150,(Math.min(metrics.signatureY-120,1790)-PAGE.bodyTop+metrics.size)*scale)}}/>
  <input aria-label="Sign off" placeholder="Yours, always" value={letter.from} maxLength={60} style={{left:160*scale,top:(metrics.lines.at(-1).baseline-70)*scale,width:1216*scale,height:90*scale,fontSize:70*scale}} onChange={e=>onChange({...letter,from:e.target.value})}/>
  </div>}
+ <textarea ref={input} aria-label="Write your letter" spellCheck="false" value={letter.body} maxLength={1500} onFocus={()=>setFocused(true)} onBlur={()=>{setFocused(false);setHoldView(false)}} onChange={bodyChanged} onSelect={e=>setCaret(e.target.selectionStart??0)} style={{position:'fixed',left:8,bottom:8,width:16,height:16,opacity:0,border:0,padding:0,resize:'none',fontSize:16,caretColor:'transparent'}}/>
  {focused&&followOn&&<button type="button" onPointerDown={e=>e.preventDefault()} onPointerUp={()=>setHoldView(h=>!h)} style={{position:'absolute',right:10,bottom:10,zIndex:6,padding:'8px 14px',borderRadius:999,border:'1px solid rgba(230,205,160,.4)',background:'rgba(20,14,8,.72)',color:'#e9dcc0',fontSize:13,cursor:'pointer',backdropFilter:'blur(3px)'}}>{holdView?'Follow my line':'See whole desk'}</button>}
  </div><section className="atelier-controls">{lightMode==='lamp'&&<div className="atelier-spacing"><label>Lamp angle <input type="range" aria-label="Lamp angle" min="-32" max="40" step="1" value={lampAngle} onChange={e=>setLampAngle(Number(e.target.value))}/></label><span>tip: you can also drag the lamp head itself</span></div>}<div className="atelier-spacing"><label>Letter size <input type="range" aria-label="Letter size" min="32" max="88" step="2" value={letter.fontSize||72} onChange={e=>onChange({...letter,fontSize:Number(e.target.value)})}/></label><label>Line spacing <input type="range" aria-label="Line spacing" min="1.28" max="1.8" step=".05" value={letter.lineSpacing||1.35} onChange={e=>onChange({...letter,lineSpacing:Number(e.target.value)})}/></label><span>{metrics?.fill||0}% of the page</span><span className="ink-meter" aria-hidden="true"><i style={{width:Math.round(charge*100)+'%'}}/></span><span>Ink {Math.round(charge*100)}%</span></div>
  {metrics?.overflow&&<p role="status" className="atelier-overflow">Your words extend beyond this sheet. <button onClick={fit}>Fit to the page</button></p>}
