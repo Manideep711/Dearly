@@ -2,7 +2,8 @@ import React,{Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'reac
 import {Canvas,useFrame,useThree} from '@react-three/fiber';
 import * as THREE from 'three';
 import {useLetterTexture} from './letter-render';
-import {layoutLetter,PAGE} from './letter-layout';
+import {layoutLetter,PAGE,faceFont} from './letter-layout';
+import TypewriterDesk from './typewriter';
 
 import './writing-desk.css';
 import PaperPicker from './paper-picker';
@@ -15,7 +16,7 @@ const sfx={ctx:null,noise:null,on:true,
 };
 const PW=4.65,PH=6.06;
 function pixelPoint(x,y){return new THREE.Vector3((x/PAGE.width-.5)*PW,(.5-y/PAGE.height)*PH,.075)}
-function quadTransform(w,h,pts){
+export function quadTransform(w,h,pts){
  // Homography mapping the rect (0,0)-(w,h) onto screen corners TL,TR,BR,BL,
  // so the invisible input fields lie exactly on the perspective sheet.
  const A=[],b=[];
@@ -25,7 +26,7 @@ function quadTransform(w,h,pts){
  const sv=A.map((r,i)=>b[i]/(r[i]||1e-9)),[a,bb,cc,d,e,f,g,hh]=sv;
  return `matrix3d(${a},${d},0,${g},${bb},${e},0,${hh},0,0,1,0,${cc},${f},0,1)`;
 }
-function useWood(){return useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=1024;const x=c.getContext('2d');x.fillStyle='#231e18';x.fillRect(0,0,1024,1024);let seed=12;const rand=()=>{seed=seed*16807%2147483647;return seed/2147483647};for(let i=0;i<5500;i++){const y=rand()*1024;x.strokeStyle=`rgba(${rand()>.5?'100,76,49':'8,5,3'},${rand()*.035})`;x.lineWidth=.3+rand()*2;x.beginPath();x.moveTo(0,y);for(let a=0;a<=1024;a+=30)x.lineTo(a,y+Math.sin(a*.013+y)*3+Math.sin(a*.004)*8);x.stroke()}for(let y=0;y<1024;y+=256){x.fillStyle='#080604';x.fillRect(0,y,1024,2)}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.colorSpace=THREE.SRGBColorSpace;return t},[])}
+export function useWood(){return useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=1024;const x=c.getContext('2d');x.fillStyle='#231e18';x.fillRect(0,0,1024,1024);let seed=12;const rand=()=>{seed=seed*16807%2147483647;return seed/2147483647};for(let i=0;i<5500;i++){const y=rand()*1024;x.strokeStyle=`rgba(${rand()>.5?'100,76,49':'8,5,3'},${rand()*.035})`;x.lineWidth=.3+rand()*2;x.beginPath();x.moveTo(0,y);for(let a=0;a<=1024;a+=30)x.lineTo(a,y+Math.sin(a*.013+y)*3+Math.sin(a*.004)*8);x.stroke()}for(let y=0;y<1024;y+=256){x.fillStyle='#080604';x.fillRect(0,y,1024,2)}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.colorSpace=THREE.SRGBColorSpace;return t},[])}
 const DIPV=new THREE.Vector3(2.8,-2.18,.95),RESTV=new THREE.Vector3(1.65,-2.98,1.55),dipGoal=new THREE.Vector3();
 function Feather({tip,dip,focused,pulse}){
  const group=useRef(),dipT0=useRef(0);const geometry=useMemo(()=>{const p=[],uv=[],indices=[];const count=90;for(let i=0;i<=count;i++){const t=i/count,y=t*2.25,curve=.22*t*t,width=Math.sin(Math.PI*t)**.7*.29;for(const side of [-1,1]){p.push(curve+side*width*(side<0?.78:1),y,.045*Math.sin(t*Math.PI)+Math.abs(width)*.18);uv.push(side<0?0:1,t)}if(i<count){const k=i*2;indices.push(k,k+1,k+2,k+1,k+3,k+2)}}const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();return g},[]);
@@ -46,7 +47,7 @@ function Bottle({onDip}){
   <mesh position-y={.545} rotation-x={-Math.PI/2}><circleGeometry args={[.125,28]}/><meshStandardMaterial color="#05070a" roughness={.12}/></mesh>
  </group>
 }
-function Candle(){
+export function Candle(){
  const flame=useRef(),glow=useRef(),light=useRef(),t=useRef(7);
  const glowTex=useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');const g=x.createRadialGradient(64,64,2,64,64,64);g.addColorStop(0,'rgba(255,190,110,.85)');g.addColorStop(.4,'rgba(255,150,60,.28)');g.addColorStop(1,'rgba(255,140,50,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return new THREE.CanvasTexture(c)},[]);
  useEffect(()=>()=>glowTex.dispose(),[glowTex]);
@@ -128,7 +129,7 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
   const row=rows.find(r=>caret>=r.start&&caret<=r.start+r.text.length)||rows.at(-1);
   if(!row){const l=pixelPoint(160,PAGE.bodyTop);tip.current.copy(slope.current?slope.current.localToWorld(l):l);return}
   const within=Math.max(0,Math.min(row.text.length,caret-row.start)),c=document.createElement('canvas').getContext('2d');
-  c.font=`${row.size}px "Mrs Saint Delafield"`;const lp=pixelPoint(160+c.measureText(row.text.slice(0,within)).width,row.baseline);tip.current.copy(slope.current?slope.current.localToWorld(lp):lp);
+  c.font=`${row.size}px ${faceFont(letter)}`;const lp=pixelPoint(160+c.measureText(row.text.slice(0,within)).width,row.baseline);tip.current.copy(slope.current?slope.current.localToWorld(lp):lp);
  },[tex,caret]);
  // The camera lives here now: it eases between the wide desk tableau (home)
  // and, while you write, a close tracking shot of the line under the caret -
@@ -147,7 +148,7 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
  useEffect(()=>()=>{geometry.dispose();wood.dispose()},[geometry,wood]);
  return <><color attach="background" args={[mode==='lamp'?'#e9dfc9':'#0d0b08']}/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><directionalLight position={mode==='lamp'?[-4,3,5]:[-5,1.5,5]} intensity={mode==='lamp'?.55:1.15} color="#ffb066" castShadow shadow-mapSize={[1024,1024]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} roughness={.94} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/><Bottle onDip={onDip}/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle}/>:<Candle/>}<Feather tip={tip} dip={dip} focused={focused} pulse={pulse}/></>
 }
-export default function WritingDesk({letter,onChange,onPreview}){
+function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  const input=useRef(),dipTimer=useRef(),pen=useRef(false),signatureDraft=useRef([]);
  const[bounds,setBounds]=useState(null),[metrics,setMetrics]=useState(null),[dip,setDip]=useState(false),[signing,setSigning]=useState(false),[plain,setPlain]=useState(false),[focused,setFocused]=useState(false),[signaturePreview,setSignaturePreview]=useState(null);
  const[charge,setCharge]=useState(1),[caret,setCaret]=useState(0),[inkTick,setInkTick]=useState(0),[soundOn,setSoundOn]=useState(()=>{try{return localStorage.getItem('dearly-sound')!=='off'}catch(e){return true}}),[followOn,setFollowOn]=useState(()=>{try{return localStorage.getItem('dearly-follow')!=='off'}catch(e){return true}}),[lightMode,setLightMode]=useState(()=>{try{return localStorage.getItem('dearly-light')==='lamp'?'lamp':'candle'}catch(e){return 'candle'}}),[lampAngle,setLampAngle]=useState(0),[holdView,setHoldView]=useState(false);
@@ -182,8 +183,20 @@ export default function WritingDesk({letter,onChange,onPreview}){
  {focused&&followOn&&<button type="button" onPointerDown={e=>e.preventDefault()} onPointerUp={()=>setHoldView(h=>!h)} style={{position:'absolute',right:10,bottom:10,zIndex:6,padding:'8px 14px',borderRadius:999,border:'1px solid rgba(230,205,160,.4)',background:'rgba(20,14,8,.72)',color:'#e9dcc0',fontSize:13,cursor:'pointer',backdropFilter:'blur(3px)'}}>{holdView?'Follow my line':'See whole desk'}</button>}
  </div><section className="atelier-controls">{lightMode==='lamp'&&<div className="atelier-spacing"><label>Lamp angle <input type="range" aria-label="Lamp angle" min="-32" max="40" step="1" value={lampAngle} onChange={e=>setLampAngle(Number(e.target.value))}/></label><span>tip: you can also drag the lamp head itself</span></div>}<div className="atelier-spacing"><label>Letter size <input type="range" aria-label="Letter size" min="32" max="88" step="2" value={letter.fontSize||72} onChange={e=>onChange({...letter,fontSize:Number(e.target.value)})}/></label><label>Line spacing <input type="range" aria-label="Line spacing" min="1.28" max="1.8" step=".05" value={letter.lineSpacing||1.35} onChange={e=>onChange({...letter,lineSpacing:Number(e.target.value)})}/></label><span>{metrics?.fill||0}% of the page</span><span className="ink-meter" aria-hidden="true"><i style={{width:Math.round(charge*100)+'%'}}/></span><span>Ink {Math.round(charge*100)}%</span></div>
  {metrics?.overflow&&<p role="status" className="atelier-overflow">Your words extend beyond this sheet. <button onClick={fit}>Fit to the page</button></p>}
- {charge<.3&&!!letter.body.trim()&&<p className="atelier-inkhint">Your ink is running dry — dip the quill to write dark again.</p>}<div className="atelier-actions"><button onClick={doDip} className={charge<.3&&!dip?'dip-pulse':''}>{dip?'Dipping…':'Dip the quill'}</button><button onClick={()=>setSigning(v=>!v)}>Sign by hand</button><button onClick={()=>setPlain(v=>!v)}>Edit text</button><button onClick={toggleSound} aria-pressed={soundOn}>{soundOn?'Sound on':'Sound off'}</button><button onClick={toggleFollow} aria-pressed={followOn}>{followOn?'Follow on':'Follow off'}</button><button onClick={toggleLight} aria-pressed={lightMode==='lamp'}>{lightMode==='lamp'?'Lamplight':'Candlelight'}</button><button className="primary" disabled={!letter.body.trim()||metrics?.overflow} onClick={onPreview}>Hold your letter ↗</button></div><p className="atelier-hint">Click the paper to write. Your layout carries through to the finished letter.</p>
+ {charge<.3&&!!letter.body.trim()&&<p className="atelier-inkhint">Your ink is running dry — dip the quill to write dark again.</p>}<div className="atelier-actions"><button onClick={doDip} className={charge<.3&&!dip?'dip-pulse':''}>{dip?'Dipping…':'Dip the quill'}</button><button onClick={()=>setSigning(v=>!v)}>Sign by hand</button><button onClick={()=>setPlain(v=>!v)}>Edit text</button><button onClick={toggleSound} aria-pressed={soundOn}>{soundOn?'Sound on':'Sound off'}</button><button onClick={toggleFollow} aria-pressed={followOn}>{followOn?'Follow on':'Follow off'}</button><button onClick={toggleLight} aria-pressed={lightMode==='lamp'}>{lightMode==='lamp'?'Lamplight':'Candlelight'}</button><button onClick={()=>onSwitchMode('type')}>Typewriter</button><button className="primary" disabled={!letter.body.trim()||metrics?.overflow} onClick={onPreview}>Hold your letter ↗</button></div><p className="atelier-hint">Click the paper to write. Your layout carries through to the finished letter.</p>
  </section>{plain&&<section className="atelier-editor"><label>Your words<textarea aria-label="Plain text editor" value={letter.body} maxLength={1500} onChange={e=>{prevBody.current=e.target.value;onChange({...letter,body:e.target.value})}}/></label><button onClick={()=>setPlain(false)}>Return to the desk</button></section>}
  {signing&&<section className="signature-panel"><p>A signature only you could make.</p><svg className="signature-pad" aria-label="Draw your signature" role="img" viewBox="0 0 480 130" onPointerDown={start} onPointerMove={move} onPointerUp={()=>{pen.current=false;onChange({...letter,signature:signatureDraft.current});setSignaturePreview(null)}} onPointerCancel={()=>{pen.current=false;setSignaturePreview(null)}}>{(signaturePreview||letter.signature||[]).map((s,i)=><path key={i} d={s.map((p,j)=>`${j?'L':'M'}${p[0]} ${p[1]}`).join(' ')} stroke="#39352e" strokeWidth="1.5" fill="none" strokeLinecap="round"/>)}</svg><button onClick={()=>onChange({...letter,signature:[]})}>Clear signature</button><button onClick={()=>setSigning(false)}>Keep signature</button></section>}
  </main>
+}
+
+// The writing room has two desks over one letter: the quill & ink desk and
+// the typewriter. The chosen medium is a property of the letter itself
+// (letter.face), so the roll, the pigeon and the reader all see the letter
+// in the face it was written in.
+export default function WritingRoom({letter,onChange,onPreview}){
+ const[mode,setMode]=useState(()=>letter.face==='type'?'type':'hand');
+ const switchMode=m=>{setMode(m);onChange({...letter,face:m})};
+ return mode==='type'
+  ?<TypewriterDesk letter={letter} onChange={onChange} onPreview={onPreview} onSwitchMode={switchMode}/>
+  :<QuillDesk letter={letter} onChange={onChange} onPreview={onPreview} onSwitchMode={switchMode}/>;
 }
