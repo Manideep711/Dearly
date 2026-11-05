@@ -75,21 +75,21 @@ function Lamp({angle,onAngle}){
  // head leans in over the page's left edge and carries the bulb light with
  // it, so the Lamp angle slider visibly swings the pool of light across
  // the letter.
- const a=THREE.MathUtils.degToRad(angle||0),enamel='#37503f',brass='#9a885d';
- return <group position={[-3.05,-3.15,.75]} onPointerDown={e=>{e.stopPropagation();drag.current={x:e.clientX,a:angle||0};try{e.target.setPointerCapture(e.pointerId)}catch(err){}}} onPointerMove={e=>{if(drag.current&&onAngle)onAngle(Math.max(-32,Math.min(40,drag.current.a+(e.clientX-drag.current.x)*.25)))}} onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>
-  <mesh position-y={.035} castShadow><cylinderGeometry args={[.3,.38,.07,24]}/><meshStandardMaterial color={enamel} metalness={.5} roughness={.4}/></mesh>
+ const a=THREE.MathUtils.degToRad(angle||0),enamel='#42604c',brass='#9a885d';
+ return <group position={[-2.9,-3.15,.75]} onPointerDown={e=>{e.stopPropagation();drag.current={x:e.clientX,a:angle||0};try{e.target.setPointerCapture(e.pointerId)}catch(err){}}} onPointerMove={e=>{if(drag.current&&onAngle)onAngle(Math.max(-32,Math.min(40,drag.current.a+(e.clientX-drag.current.x)*.25)))}} onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>
+  <mesh position-y={.035} castShadow><cylinderGeometry args={[.3,.38,.07,24]}/><meshStandardMaterial color={enamel} metalness={.35} roughness={.5}/></mesh>
   <mesh position-y={.1} castShadow><sphereGeometry args={[.13,16,12]}/><meshStandardMaterial color={brass} metalness={.75} roughness={.35}/></mesh>
-  <mesh position-y={.82} castShadow><cylinderGeometry args={[.05,.05,1.5,12]}/><meshStandardMaterial color={enamel} metalness={.5} roughness={.4}/></mesh>
-  <group position-y={1.57} rotation-z={a}>
+  <mesh position-y={.55} castShadow><cylinderGeometry args={[.065,.065,1.05,12]}/><meshStandardMaterial color={enamel} metalness={.35} roughness={.5}/></mesh>
+  <group position-y={1.12} rotation-z={a}>
    <mesh castShadow><sphereGeometry args={[.09,14,12]}/><meshStandardMaterial color={brass} metalness={.75} roughness={.35}/></mesh>
-   <mesh position={[.31,.25,0]} rotation-z={-.89} castShadow><cylinderGeometry args={[.04,.04,.8,10]}/><meshStandardMaterial color={enamel} metalness={.5} roughness={.4}/></mesh>
-   <mesh position={[.62,.5,0]} castShadow><sphereGeometry args={[.08,14,12]}/><meshStandardMaterial color={brass} metalness={.75} roughness={.35}/></mesh>
-   <mesh position={[.79,.59,0]} rotation-z={-1.07} castShadow><cylinderGeometry args={[.035,.035,.38,10]}/><meshStandardMaterial color={enamel} metalness={.5} roughness={.4}/></mesh>
-   <group position={[.95,.68,0]} rotation-z={-.8}>
-    <mesh castShadow><cylinderGeometry args={[.085,.31,.48,24,1,true]}/><meshStandardMaterial color={enamel} metalness={.55} roughness={.35} side={THREE.DoubleSide}/></mesh>
+   <mesh position={[.25,.17,0]} rotation-z={-.97} castShadow><cylinderGeometry args={[.055,.055,.61,10]}/><meshStandardMaterial color={enamel} metalness={.35} roughness={.5}/></mesh>
+   <mesh position={[.5,.34,0]} castShadow><sphereGeometry args={[.075,14,12]}/><meshStandardMaterial color={brass} metalness={.75} roughness={.35}/></mesh>
+   <mesh position={[.64,.41,0]} rotation-z={-1.11} castShadow><cylinderGeometry args={[.045,.045,.32,10]}/><meshStandardMaterial color={enamel} metalness={.35} roughness={.5}/></mesh>
+   <group position={[.78,.48,0]} rotation-z={-.75}>
+    <mesh castShadow><cylinderGeometry args={[.085,.31,.48,24,1,true]}/><meshStandardMaterial color={enamel} metalness={.4} roughness={.45} side={THREE.DoubleSide}/></mesh>
     <mesh position-y={.26} castShadow><cylinderGeometry args={[.05,.085,.06,16]}/><meshStandardMaterial color={brass} metalness={.75} roughness={.35}/></mesh>
     <mesh position-y={-.1}><sphereGeometry args={[.075,12,10]}/><meshBasicMaterial color="#fff3cf"/></mesh>
-    <pointLight position={[0,-.28,.02]} color="#ffdca8" intensity={34} distance={0} decay={2}/>
+    <pointLight position={[0,-.24,.02]} color="#ffdca8" intensity={22} distance={0} decay={2}/>
    </group>
   </group>
  </group>
