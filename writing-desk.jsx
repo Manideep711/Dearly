@@ -26,7 +26,7 @@ function quadTransform(w,h,pts){
  return `matrix3d(${a},${d},0,${g},${bb},${e},0,${hh},0,0,1,0,${cc},${f},0,1)`;
 }
 function useWood(){return useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=1024;const x=c.getContext('2d');x.fillStyle='#231e18';x.fillRect(0,0,1024,1024);let seed=12;const rand=()=>{seed=seed*16807%2147483647;return seed/2147483647};for(let i=0;i<5500;i++){const y=rand()*1024;x.strokeStyle=`rgba(${rand()>.5?'100,76,49':'8,5,3'},${rand()*.035})`;x.lineWidth=.3+rand()*2;x.beginPath();x.moveTo(0,y);for(let a=0;a<=1024;a+=30)x.lineTo(a,y+Math.sin(a*.013+y)*3+Math.sin(a*.004)*8);x.stroke()}for(let y=0;y<1024;y+=256){x.fillStyle='#080604';x.fillRect(0,y,1024,2)}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.colorSpace=THREE.SRGBColorSpace;return t},[])}
-const DIPV=new THREE.Vector3(3,-2.48,.95),RESTV=new THREE.Vector3(1.65,-2.98,1.55);
+const DIPV=new THREE.Vector3(3,-2.38,.95),RESTV=new THREE.Vector3(1.65,-2.98,1.55);
 function Feather({tip,dip,focused,pulse}){
  const group=useRef();const geometry=useMemo(()=>{const p=[],uv=[],indices=[];const count=90;for(let i=0;i<=count;i++){const t=i/count,y=t*2.25,curve=.22*t*t,width=Math.sin(Math.PI*t)**.7*.29;for(const side of [-1,1]){p.push(curve+side*width*(side<0?.78:1),y,.045*Math.sin(t*Math.PI)+Math.abs(width)*.18);uv.push(side<0?0:1,t)}if(i<count){const k=i*2;indices.push(k,k+1,k+2,k+1,k+3,k+2)}}const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();return g},[]);
  const texture=useMemo(()=>{const c=document.createElement('canvas');c.width=256;c.height=1024;const x=c.getContext('2d');x.fillStyle='#c6c0ab';x.fillRect(0,0,256,1024);for(let y=0;y<1024;y+=5){x.strokeStyle=y%15?'#8f8b7b66':'#ece8d2a0';x.beginPath();x.moveTo(0,y+55);x.lineTo(125,y);x.lineTo(256,y+38);x.stroke()}x.fillStyle='#ddd7bf';x.fillRect(123,0,3,1024);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t},[]);
@@ -36,7 +36,7 @@ function Feather({tip,dip,focused,pulse}){
 }
 function Bottle({onDip}){
  const profile=useMemo(()=>[[.001,0],[.3,0],[.37,.05],[.395,.15],[.37,.28],[.28,.37],[.185,.44],[.16,.5],[.16,.57],[.185,.575]].map(([x,y])=>new THREE.Vector2(x,y)),[]);
- return <group position={[3,-3.15,.75]} onClick={e=>{e.stopPropagation();onDip()}}>
+ return <group position={[3,-3.15,.75]} scale={1.15} onClick={e=>{e.stopPropagation();onDip()}}>
   <mesh castShadow><latheGeometry args={[profile,36]}/><meshPhysicalMaterial color="#16211b" roughness={.22} metalness={.1} clearcoat={.8} clearcoatRoughness={.25}/></mesh>
   <mesh position-y={.575} rotation-x={Math.PI/2}><torusGeometry args={[.172,.022,10,36]}/><meshStandardMaterial color="#9a885d" metalness={.75} roughness={.38}/></mesh>
   <mesh position-y={.545} rotation-x={-Math.PI/2}><circleGeometry args={[.125,28]}/><meshStandardMaterial color="#05070a" roughness={.12}/></mesh>
@@ -47,10 +47,10 @@ function Candle(){
  const glowTex=useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');const g=x.createRadialGradient(64,64,2,64,64,64);g.addColorStop(0,'rgba(255,190,110,.85)');g.addColorStop(.4,'rgba(255,150,60,.28)');g.addColorStop(1,'rgba(255,140,50,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return new THREE.CanvasTexture(c)},[]);
  useEffect(()=>()=>glowTex.dispose(),[glowTex]);
  useFrame((_,dt)=>{t.current+=dt;const n=Math.sin(t.current*2.9)*.5+Math.sin(t.current*5.3+1.3)*.3+Math.sin(t.current*9.7+.5)*.2;
-  if(light.current)light.current.intensity=16+n*2.2;
+  if(light.current)light.current.intensity=20+n*2.6;
   if(flame.current){flame.current.scale.set(1-n*.04,1+n*.1,1);flame.current.rotation.z=n*.03}
   if(glow.current)glow.current.material.opacity=.13+n*.025;});
- return <group position={[-2.85,-3.15,.75]}>
+ return <group position={[-2.85,-3.15,.75]} scale={1.25}>
   <mesh position-y={.02} castShadow><cylinderGeometry args={[.3,.37,.05,24]}/><meshStandardMaterial color="#8a6f3e" metalness={.8} roughness={.38}/></mesh>
   <mesh position-y={.09} castShadow><cylinderGeometry args={[.06,.09,.1,16]}/><meshStandardMaterial color="#8a6f3e" metalness={.8} roughness={.38}/></mesh>
   <mesh position-y={.33} castShadow><cylinderGeometry args={[.15,.17,.4,20]}/><meshStandardMaterial color="#e9dfc6" roughness={.55}/></mesh>
@@ -62,7 +62,7 @@ function Candle(){
    <mesh position-y={-.03} scale={[.18,.5,.18]}><sphereGeometry args={[.09,12,16]}/><meshBasicMaterial color="#fff6d8"/></mesh>
   </group>
   <sprite ref={glow} position-y={.68} scale={[1.15,1.15,1]}><spriteMaterial map={glowTex} transparent opacity={.13} depthWrite={false}/></sprite>
-  <pointLight ref={light} position={[0,.74,.14]} color="#ff9a44" intensity={16} distance={0} decay={2}/>
+  <pointLight ref={light} position={[0,.74,.14]} color="#ff9a44" intensity={20} distance={0} decay={2}/>
  </group>
 }
 function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,focused,pulse}){
@@ -78,7 +78,7 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
   // table front - by projecting sample points and dollying until they fit,
   // then report the sheet's four projected corners for the input overlay.
   const sl=slope.current;if(!sl)return;sl.updateMatrixWorld(true);
-  const pts=[[-2.85,-1.95,.75],[3,-2.4,.75],[-4.6,-3.15,1.7],[4.6,-3.15,1.7]].map(q=>new THREE.Vector3(...q));
+  const pts=[[-2.85,-1.9,.75],[3,-2.35,.75]].map(q=>new THREE.Vector3(...q));
   for(const [a,b] of [[-1,1],[1,1],[-1,-1],[1,-1]])pts.push(sl.localToWorld(new THREE.Vector3(a*(PW+.55)/2,b*(PH+.55)/2,0)));
   let dist=13;const v=new THREE.Vector3();
   for(let it=0;it<3;it++){
@@ -102,7 +102,7 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
   c.font=`${row.size}px "Mrs Saint Delafield"`;const lp=pixelPoint(160+c.measureText(row.text.slice(0,within)).width,row.baseline);tip.current.copy(slope.current?slope.current.localToWorld(lp):lp);
  },[tex,caret]);
  useEffect(()=>()=>{geometry.dispose();wood.dispose()},[geometry,wood]);
- return <><color attach="background" args={['#0d0b08']}/><ambientLight intensity={.16} color="#ffe7c4"/><hemisphereLight args={['#4a3a26','#0b0906',.5]}/><directionalLight position={[-5,1.5,5]} intensity={1.15} color="#ffb066" castShadow shadow-mapSize={[1024,1024]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} roughness={.94} side={THREE.DoubleSide}/></mesh></group><Bottle onDip={onDip}/><Candle/><Feather tip={tip} dip={dip} focused={focused} pulse={pulse}/></>
+ return <><color attach="background" args={['#0d0b08']}/><ambientLight intensity={.2} color="#ffe7c4"/><hemisphereLight args={['#4a3a26','#0b0906',.65]}/><directionalLight position={[-5,1.5,5]} intensity={1.15} color="#ffb066" castShadow shadow-mapSize={[1024,1024]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} roughness={.94} side={THREE.DoubleSide}/></mesh></group><Bottle onDip={onDip}/><Candle/><Feather tip={tip} dip={dip} focused={focused} pulse={pulse}/></>
 }
 export default function WritingDesk({letter,onChange,onPreview}){
  const input=useRef(),dipTimer=useRef(),pen=useRef(false),signatureDraft=useRef([]);
