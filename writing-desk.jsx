@@ -27,24 +27,35 @@ export function quadTransform(w,h,pts){
  return `matrix3d(${a},${d},0,${g},${bb},${e},0,${hh},0,0,1,0,${cc},${f},0,1)`;
 }
 export function useWood(){return useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=1024;const x=c.getContext('2d');x.fillStyle='#231e18';x.fillRect(0,0,1024,1024);let seed=12;const rand=()=>{seed=seed*16807%2147483647;return seed/2147483647};for(let i=0;i<5500;i++){const y=rand()*1024;x.strokeStyle=`rgba(${rand()>.5?'100,76,49':'8,5,3'},${rand()*.035})`;x.lineWidth=.3+rand()*2;x.beginPath();x.moveTo(0,y);for(let a=0;a<=1024;a+=30)x.lineTo(a,y+Math.sin(a*.013+y)*3+Math.sin(a*.004)*8);x.stroke()}for(let y=0;y<1024;y+=256){x.fillStyle='#080604';x.fillRect(0,y,1024,2)}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.colorSpace=THREE.SRGBColorSpace;return t},[])}
-const DIPV=new THREE.Vector3(2.8,-2.18,.95),RESTV=new THREE.Vector3(1.65,-2.98,1.55),dipGoal=new THREE.Vector3();
-function Feather({tip,dip,focused,pulse}){
- const group=useRef(),dipT0=useRef(0);const geometry=useMemo(()=>{const p=[],uv=[],indices=[];const count=90;for(let i=0;i<=count;i++){const t=i/count,y=t*2.25,curve=.22*t*t,width=Math.sin(Math.PI*t)**.7*.29;for(const side of [-1,1]){p.push(curve+side*width*(side<0?.78:1),y,.045*Math.sin(t*Math.PI)+Math.abs(width)*.18);uv.push(side<0?0:1,t)}if(i<count){const k=i*2;indices.push(k,k+1,k+2,k+1,k+3,k+2)}}const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();return g},[]);
- const texture=useMemo(()=>{const c=document.createElement('canvas');c.width=256;c.height=1024;const x=c.getContext('2d');x.fillStyle='#c6c0ab';x.fillRect(0,0,256,1024);for(let y=0;y<1024;y+=5){x.strokeStyle=y%15?'#8f8b7b66':'#ece8d2a0';x.beginPath();x.moveTo(0,y+55);x.lineTo(125,y);x.lineTo(256,y+38);x.stroke()}x.fillStyle='#ddd7bf';x.fillRect(123,0,3,1024);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t},[]);
- useEffect(()=>()=>{geometry.dispose();texture.dispose()},[geometry,texture]);
+const RESTV=new THREE.Vector3(1.65,-3.08,1.55);
+function Pen({tip,focused,pulse}){
+ const group=useRef();
+ // A fountain pen with a steel nib, built around its tip: the nib is a
+ // stamped outline (extruded, with the slit and breather hole as real
+ // holes), a dark feed beneath it, then the grip section and a glossy
+ // ebonite barrel with a brass band. It carries its own ink — no
+ // inkwell, no dipping — and rides the caret exactly where the quill
+ // did, with the same little bob on each keystroke.
+ const nib=useMemo(()=>{
+  const s=new THREE.Shape();
+  s.moveTo(0,0);s.quadraticCurveTo(.10,.06,.115,.20);s.quadraticCurveTo(.12,.36,.075,.50);s.lineTo(-.075,.50);s.quadraticCurveTo(-.12,.36,-.115,.20);s.quadraticCurveTo(-.10,.06,0,0);
+  const slit=new THREE.Path();slit.moveTo(-.006,.015);slit.lineTo(.006,.015);slit.lineTo(.004,.30);slit.lineTo(-.004,.30);slit.closePath();s.holes.push(slit);
+  const hole=new THREE.Path();hole.absarc(0,.325,.016,0,Math.PI*2,true);s.holes.push(hole);
+  return new THREE.ExtrudeGeometry(s,{depth:.014,bevelEnabled:true,bevelThickness:.004,bevelSize:.004,bevelSegments:1,curveSegments:12})},[]);
+ useEffect(()=>()=>{nib.dispose()},[nib]);
  useFrame((_,dt)=>{const g=group.current;if(!g)return;
-  if(dip&&!dipT0.current)dipT0.current=performance.now();if(!dip)dipT0.current=0;
-  let goal=focused?tip.current:RESTV;
-  if(dip){const e=(performance.now()-dipT0.current)/1000;dipGoal.copy(DIPV);if(e>1.1&&e<3.1)dipGoal.y-=Math.abs(Math.sin((e-1.1)*Math.PI))*.06;goal=e<3.1?dipGoal:(focused?tip.current:RESTV)}
-  g.position.lerp(goal,1-Math.exp(-dt*(dip?6.5:focused?26:5)));if(focused&&!dip){const age=performance.now()-pulse.current;if(age<230){const b=Math.sin(age/230*Math.PI);g.position.y-=b*.04}}g.rotation.z=THREE.MathUtils.damp(g.rotation.z,dip?-.25:focused?-.7:-1.45,8,dt);g.rotation.x=THREE.MathUtils.damp(g.rotation.x,dip?.5:focused?1.22:.15,8,dt)});
- return <group ref={group} scale={.44} position={[1.65,-2.98,1.55]} rotation={[.15,0,-1.45]}><mesh geometry={geometry} position-y={.22} castShadow><meshStandardMaterial map={texture} bumpMap={texture} bumpScale={.012} roughness={.92} side={THREE.DoubleSide}/></mesh><mesh position={[.02,.82,.02]} rotation-z={-.05} castShadow><cylinderGeometry args={[.009,.016,1.7,8]}/><meshStandardMaterial color="#bfb69b" roughness={.6}/></mesh><mesh position-y={.055} rotation-z={Math.PI}><coneGeometry args={[.028,.18,8]}/><meshStandardMaterial color="#463d29" metalness={.55} roughness={.42}/></mesh></group>
-}
-function Bottle({onDip}){
- const profile=useMemo(()=>[[.001,0],[.3,0],[.37,.05],[.395,.15],[.37,.28],[.28,.37],[.185,.44],[.16,.5],[.16,.57],[.185,.575]].map(([x,y])=>new THREE.Vector2(x,y)),[]);
- return <group position={[2.8,-3.15,.75]} scale={1.5} onClick={e=>{e.stopPropagation();onDip()}}>
-  <mesh castShadow><latheGeometry args={[profile,36]}/><meshPhysicalMaterial color="#d9c39a" roughness={.45} metalness={0} clearcoat={.4} clearcoatRoughness={.3}/></mesh>
-  <mesh position-y={.575} rotation-x={Math.PI/2}><torusGeometry args={[.172,.022,10,36]}/><meshStandardMaterial color="#9a885d" metalness={.75} roughness={.38}/></mesh>
-  <mesh position-y={.545} rotation-x={-Math.PI/2}><circleGeometry args={[.125,28]}/><meshStandardMaterial color="#05070a" roughness={.12}/></mesh>
+  const goal=focused?tip.current:RESTV;
+  g.position.lerp(goal,1-Math.exp(-dt*(focused?26:5)));
+  if(focused){const age=performance.now()-pulse.current;if(age<230){const b=Math.sin(age/230*Math.PI);g.position.y-=b*.04}}
+  g.rotation.z=THREE.MathUtils.damp(g.rotation.z,focused?-.62:-1.52,8,dt);
+  g.rotation.x=THREE.MathUtils.damp(g.rotation.x,focused?1.12:.1,8,dt)});
+ return <group ref={group} scale={.44} position={[1.65,-3.08,1.55]} rotation={[.1,0,-1.52]}>
+  <mesh geometry={nib} position-z={-.007} castShadow><meshStandardMaterial color="#c9ccd1" metalness={.92} roughness={.28}/></mesh>
+  <mesh position={[0,.32,-.028]} castShadow><boxGeometry args={[.11,.34,.02]}/><meshStandardMaterial color="#17120e" roughness={.6}/></mesh>
+  <mesh position-y={.64} castShadow><cylinderGeometry args={[.058,.07,.30,14]}/><meshStandardMaterial color="#241a12" roughness={.38}/></mesh>
+  <mesh position-y={1.44} castShadow><cylinderGeometry args={[.05,.07,1.3,16]}/><meshPhysicalMaterial color="#2a1c11" roughness={.26} clearcoat={.65} clearcoatRoughness={.25}/></mesh>
+  <mesh position-y={2.02} rotation-x={Math.PI/2}><torusGeometry args={[.058,.011,8,20]}/><meshStandardMaterial color="#9a885d" metalness={.8} roughness={.35}/></mesh>
+  <mesh position-y={2.1} scale={[1,.45,1]}><sphereGeometry args={[.05,14,10]}/><meshPhysicalMaterial color="#2a1c11" roughness={.26} clearcoat={.65} clearcoatRoughness={.25}/></mesh>
  </group>
 }
 export function Candle(){
@@ -108,8 +119,8 @@ function Lamp({angle,onAngle}){
   </group>
  </group>
 }
-function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,focused,pulse,follow,mode,lampAngle,onLampAngle}){
- const tex=useLetterTexture(letter,onMetrics,true,inkRef),wood=useWood(),tip=useRef(pixelPoint(160,365)),paper=useRef(),slope=useRef(),home=useRef({pos:new THREE.Vector3(0,-1.05,13),tgt:new THREE.Vector3(0,-.35,-.2)}),look=useRef(new THREE.Vector3(0,-.35,-.2)),lastKey=useRef(''),lastRep=useRef(new THREE.Vector3(0,-1.05,13));
+function DeskScene({letter,onMetrics,onBounds,onFocus,caret,focused,pulse,mode,lampAngle,onLampAngle}){
+ const tex=useLetterTexture(letter,onMetrics,true),wood=useWood(),tip=useRef(pixelPoint(160,365)),paper=useRef(),slope=useRef(),home=useRef({pos:new THREE.Vector3(0,-1.05,13),tgt:new THREE.Vector3(0,-.35,-.2)}),look=useRef(new THREE.Vector3(0,-.35,-.2)),lastKey=useRef(''),lastRep=useRef(new THREE.Vector3(0,-1.05,13));
  const {camera,size}=useThree();
  const geometry=useMemo(()=>{const g=new THREE.PlaneGeometry(PW,PH,90,120),p=g.attributes.position;for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i),edge=Math.pow(Math.abs(x)/(PW/2),9);p.setZ(i,.012*Math.sin(y*2)+edge*.055);p.setX(i,x+edge*.009*Math.sin(y*37))}g.computeVertexNormals();return g},[]);
  // Fit the sheet by measuring its own projection: set a first-guess zoom,
@@ -146,7 +157,7 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
   onBounds({corners});
  },[camera,size,onBounds]);
  useEffect(()=>{
-  // The quill rides the caret, not the end of the letter: find the laid-out
+  // The pen rides the caret, not the end of the letter: find the laid-out
   // line the caret sits in and measure the text up to it.
   const rows=tex.userData.layout.bodyLines;
   const row=rows.find(r=>caret>=r.start&&caret<=r.start+r.text.length)||rows.at(-1);
@@ -154,14 +165,13 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
   const within=Math.max(0,Math.min(row.text.length,caret-row.start)),c=document.createElement('canvas').getContext('2d');
   c.font=`${row.size}px ${faceFont(letter)}`;const lp=pixelPoint(160+c.measureText(row.text.slice(0,within)).width,row.baseline);tip.current.copy(slope.current?slope.current.localToWorld(lp):lp);
  },[tex,caret]);
- // The camera lives here now: it eases between the wide desk tableau (home)
- // and, while you write, a close tracking shot of the line under the caret -
- // gliding down as the letter grows. Dipping pulls back home so the quill's
- // flight to the inkwell plays out in full view. When a pose settles, the
- // sheet's projected corners are re-reported so the invisible input fields
- // stay glued to the paper whichever shot we are in.
- useFrame((_,dt)=>{const h=home.current;let dp=h.pos,dl=h.tgt;
-  if(follow&&focused&&!dip){const dir=h.pos.clone().sub(h.tgt).normalize(),distF=Math.min(7.6,h.pos.distanceTo(h.tgt)*.68),lk=tip.current.clone();lk.x=THREE.MathUtils.clamp(lk.x-.45,-1.9,1.9);lk.y-=.28;lk.z+=.15;dp=lk.clone().add(dir.multiplyScalar(distF));dl=lk}
+ // The camera holds the wide desk tableau for the whole session. It
+ // used to glide in on the caret's line while writing and pull back out
+ // for every dip — the constant zooming in and out irritated more than
+ // it helped, so the follow shot is gone. The corner re-reporting below
+ // stays: it keeps the invisible input fields glued to the paper while
+ // the initial fit settles.
+ useFrame((_,dt)=>{const h=home.current;const dp=h.pos,dl=h.tgt;
   const k=1-Math.exp(-dt*3);camera.position.lerp(dp,k);look.current.lerp(dl,k);camera.lookAt(look.current);
   const settled=camera.position.distanceTo(dp)<.03&&look.current.distanceTo(dl)<.03,key=dp.x.toFixed(1)+','+dp.y.toFixed(1)+','+dp.z.toFixed(1);
   // Re-glue the fields not only once the camera settles but all through the
@@ -169,28 +179,24 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
   // the paper while it moves.
   if((settled&&key!==lastKey.current)||camera.position.distanceTo(lastRep.current)>.3){if(settled)lastKey.current=key;lastRep.current.copy(camera.position);const sl=slope.current;if(sl){sl.updateMatrixWorld(true);onBounds({corners:[[-PW/2,PH/2],[PW/2,PH/2],[PW/2,-PH/2],[-PW/2,-PH/2]].map(([x,y])=>{const q=sl.localToWorld(new THREE.Vector3(x,y,0)).project(camera);return [(q.x+1)*size.width/2,(1-q.y)*size.height/2]})})}}});
  useEffect(()=>()=>{geometry.dispose();wood.dispose()},[geometry,wood]);
- return <><color attach="background" args={[mode==='lamp'?'#e9dfc9':'#0d0b08']}/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><directionalLight position={mode==='lamp'?[-4,3,5]:[-5,1.5,5]} intensity={mode==='lamp'?.55:1.15} color="#ffb066" castShadow shadow-mapSize={[512,512]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} roughness={.94} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/><Bottle onDip={onDip}/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle}/>:<Candle/>}<Feather tip={tip} dip={dip} focused={focused} pulse={pulse}/></>
+ return <><color attach="background" args={[mode==='lamp'?'#e9dfc9':'#0d0b08']}/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><directionalLight position={mode==='lamp'?[-4,3,5]:[-5,1.5,5]} intensity={mode==='lamp'?.55:1.15} color="#ffb066" castShadow shadow-mapSize={[512,512]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} roughness={.94} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle}/>:<Candle/>}<Pen tip={tip} focused={focused} pulse={pulse}/></>
 }
 // The choice of desk, shown high in both rooms so it is the first thing a
 // writer meets - the old switch sat at the end of the actions row, below
 // the stage, and on a phone it was effectively buried.
 export function ModeSwitch({mode,onSwitchMode}){
- return <div className="atelier-mode" role="group" aria-label="Choose how to write"><button type="button" aria-pressed={mode==='hand'} onClick={()=>onSwitchMode('hand')}>Quill &amp; ink</button><button type="button" aria-pressed={mode==='type'} onClick={()=>onSwitchMode('type')}>Typewriter</button></div>
+ return <div className="atelier-mode" role="group" aria-label="Choose how to write"><button type="button" aria-pressed={mode==='hand'} onClick={()=>onSwitchMode('hand')}>Pen &amp; ink</button><button type="button" aria-pressed={mode==='type'} onClick={()=>onSwitchMode('type')}>Typewriter</button></div>
 }
 function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
- const input=useRef(),dipTimer=useRef(),pen=useRef(false),signatureDraft=useRef([]);
+ const input=useRef(),pen=useRef(false),signatureDraft=useRef([]);
  const fieldInput=useRef(),stageRef=useRef();const[fieldFocus,setFieldFocus]=useState(null);
- const[bounds,setBounds]=useState(null),[metrics,setMetrics]=useState(null),[dip,setDip]=useState(false),[signing,setSigning]=useState(false),[plain,setPlain]=useState(false),[focused,setFocused]=useState(false),[signaturePreview,setSignaturePreview]=useState(null);
- const[charge,setCharge]=useState(1),[caret,setCaret]=useState(0),[inkTick,setInkTick]=useState(0),[soundOn,setSoundOn]=useState(()=>{try{return localStorage.getItem('dearly-sound')!=='off'}catch(e){return true}}),[followOn,setFollowOn]=useState(()=>{try{return localStorage.getItem('dearly-follow')!=='off'}catch(e){return true}}),[lightMode,setLightMode]=useState(()=>{try{return localStorage.getItem('dearly-light')==='lamp'?'lamp':'candle'}catch(e){return 'candle'}}),[lampAngle,setLampAngle]=useState(0),[holdView,setHoldView]=useState(false);
- const sinceDip=useRef(0),prevBody=useRef(letter.body||''),pulse=useRef(0),lastScratch=useRef(0),dryTimers=useRef([]),chargeRef=useRef(1),soundOnRef=useRef(soundOn);
- const inkRef=useRef({words:new Map(),tick:0,charge:()=>chargeRef.current});inkRef.current.tick=inkTick;
- const applyCharge=v=>{chargeRef.current=v;setCharge(v)};
+ const[bounds,setBounds]=useState(null),[metrics,setMetrics]=useState(null),[signing,setSigning]=useState(false),[plain,setPlain]=useState(false),[focused,setFocused]=useState(false),[signaturePreview,setSignaturePreview]=useState(null);
+ const[caret,setCaret]=useState(0),[soundOn,setSoundOn]=useState(()=>{try{return localStorage.getItem('dearly-sound')!=='off'}catch(e){return true}}),[lightMode,setLightMode]=useState(()=>{try{return localStorage.getItem('dearly-light')==='lamp'?'lamp':'candle'}catch(e){return 'candle'}}),[lampAngle,setLampAngle]=useState(0);
+ const prevBody=useRef(letter.body||''),pulse=useRef(0),lastScratch=useRef(0),soundOnRef=useRef(soundOn);
  function bodyChanged(e){const v=e.target.value,prev=prevBody.current;prevBody.current=v;setCaret(e.target.selectionStart??v.length);
-  if(v.length>prev.length){sinceDip.current+=v.length-prev.length;applyCharge(Math.max(0,1-sinceDip.current/520));pulse.current=performance.now();if(pulse.current-lastScratch.current>70){lastScratch.current=pulse.current;sfx.on=soundOnRef.current;sfx.scratch()}
-   dryTimers.current.forEach(clearTimeout);dryTimers.current=[950,1900,2900].map(ms=>setTimeout(()=>setInkTick(t=>t+1),ms));}
+  if(v.length>prev.length){pulse.current=performance.now();if(pulse.current-lastScratch.current>70){lastScratch.current=pulse.current;sfx.on=soundOnRef.current;sfx.scratch()}}
   onChange({...letter,body:v})}
  function toggleLight(){const v=lightMode==='lamp'?'candle':'lamp';setLightMode(v);try{localStorage.setItem('dearly-light',v)}catch(e){}}
- function toggleFollow(){const v=!followOn;setFollowOn(v);try{localStorage.setItem('dearly-follow',v?'on':'off')}catch(e){}}
  function toggleSound(){const v=!soundOn;setSoundOn(v);soundOnRef.current=v;sfx.on=v;try{localStorage.setItem('dearly-sound',v?'on':'off')}catch(e){}if(v){sfx.ensure();sfx.scratch()}}
  const receiveMetrics=useCallback((_,m)=>setMetrics(m),[]),receiveBounds=useCallback(b=>setBounds(b),[]);
  // The real editor is a tiny parked input (rendered below, fixed at the
@@ -221,8 +227,6 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
   const idx=caretFromPoint(PAGE.left+fx*(PAGE.right-PAGE.left),top+fy*(bottom-top));
   el.setSelectionRange(idx,idx);setCaret(idx);
  }
- const doDip=useCallback(()=>{sfx.on=soundOnRef.current;sfx.dip();setDip(true);clearTimeout(dipTimer.current);dipTimer.current=setTimeout(()=>{setDip(false);sinceDip.current=0;applyCharge(1);setInkTick(t=>t+1);input.current?.focus({preventScroll:true})},4000)},[]);
- useEffect(()=>()=>clearTimeout(dipTimer.current),[]);
  // While writing, the stage is full-screen — but the phone keyboard
  // covers the bottom of the layout viewport, and the cameras frame for
  // the full height, so the desk sank behind the keyboard. Size the
@@ -256,7 +260,7 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  function move(e){if(!pen.current)return;const last=signatureDraft.current.at(-1),p=point(e);if(last.length>1200)return;const prev=last.at(-1);if(Math.hypot(p[0]-prev[0],p[1]-prev[1])<1.5)return;const strokes=signatureDraft.current.map(s=>[...s]);strokes.at(-1).push(p);signatureDraft.current=strokes;setSignaturePreview(strokes)}
  function fit(){const ctx=document.createElement('canvas').getContext('2d');let fontSize=Number(letter.fontSize)||72;while(fontSize>32&&layoutLetter(ctx,{...letter,fontSize}).overflow)fontSize-=2;onChange({...letter,fontSize})}
  return <main className="atelier"><nav><span className="brand">dearly<span>Writing room</span></span><span className="atelier-saved">Saved on this device</span></nav><div className="atelier-heading"><h1>Your letter</h1></div>
- <ModeSwitch mode="hand" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div ref={stageRef} className={(focused||fieldFocus)?'atelier-stage writing-live':'atelier-stage'} onClick={e=>{if(e.target.tagName==='CANVAS'){const el=input.current;if(el){if(document.activeElement!==el)el.focus({preventScroll:true});const v=el.value.length;el.setSelectionRange(v,v);setCaret(v)}}}}><Canvas shadows dpr={[1,1.25]} camera={{fov:33,position:[0,-1.05,13],near:.1,far:120}}><Suspense fallback={null}><DeskScene letter={letter} onMetrics={receiveMetrics} onBounds={receiveBounds} onDip={doDip} dip={dip} onFocus={()=>input.current?.focus()} inkRef={inkRef.current} caret={caret} focused={focused} pulse={pulse} follow={followOn&&!holdView} mode={lightMode} lampAngle={lampAngle} onLampAngle={setLampAngle}/></Suspense></Canvas>
+ <ModeSwitch mode="hand" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div ref={stageRef} className={(focused||fieldFocus)?'atelier-stage writing-live':'atelier-stage'} onClick={e=>{if(e.target.tagName==='CANVAS'){const el=input.current;if(el){if(document.activeElement!==el)el.focus({preventScroll:true});const v=el.value.length;el.setSelectionRange(v,v);setCaret(v)}}}}><Canvas shadows dpr={[1,1.25]} camera={{fov:33,position:[0,-1.05,13],near:.1,far:120}}><Suspense fallback={null}><DeskScene letter={letter} onMetrics={receiveMetrics} onBounds={receiveBounds} onFocus={()=>input.current?.focus()} caret={caret} focused={focused} pulse={pulse} mode={lightMode} lampAngle={lampAngle} onLampAngle={setLampAngle}/></Suspense></Canvas>
  {bounds&&metrics&&<div className="paper-fields" style={{left:0,top:0,width:PAGE.width*scale,height:PAGE.height*scale,transform:fieldTransform}}>
  <div aria-hidden="true" onPointerDown={e=>tapField(e,'to')} style={{position:'absolute',pointerEvents:'auto',cursor:'text',left:160*scale,top:(230-72)*scale,width:1216*scale,height:95*scale}}/>
  {!letter.to&&fieldFocus!=='to'&&<span className="atelier-placeholder" style={{left:160*scale,top:175*scale,fontSize:62*scale}}>My dearest,</span>}
@@ -265,13 +269,13 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  <div aria-hidden="true" onPointerDown={e=>tapField(e,'from')} style={{position:'absolute',pointerEvents:'auto',cursor:'text',left:160*scale,top:(metrics.lines.at(-1).baseline-70)*scale,width:1216*scale,height:90*scale}}/>
  {!letter.from&&fieldFocus!=='from'&&<span className="atelier-placeholder" style={{left:160*scale,top:(metrics.lines.at(-1).baseline-55)*scale,fontSize:60*scale}}>Yours, always</span>}
  </div>}
- <textarea ref={input} aria-label="Write your letter" spellCheck="false" value={letter.body} maxLength={1500} onFocus={()=>setFocused(true)} onBlur={()=>{setFocused(false);setHoldView(false)}} onChange={bodyChanged} onSelect={e=>setCaret(e.target.selectionStart??0)} style={{position:'fixed',left:8,bottom:8,width:16,height:16,opacity:0,border:0,padding:0,resize:'none',fontSize:16,caretColor:'transparent'}}/>
+ <textarea ref={input} aria-label="Write your letter" spellCheck="false" value={letter.body} maxLength={1500} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} onChange={bodyChanged} onSelect={e=>setCaret(e.target.selectionStart??0)} style={{position:'fixed',left:8,bottom:8,width:16,height:16,opacity:0,border:0,padding:0,resize:'none',fontSize:16,caretColor:'transparent'}}/>
  <input ref={fieldInput} aria-label={fieldFocus==='from'?'Sign off':'Recipient'} type="text" maxLength={60} value={fieldFocus?letter[fieldFocus]:(letter.to||'')} onChange={e=>{if(fieldFocus)onChange({...letter,[fieldFocus]:e.target.value})}} onBlur={()=>setFieldFocus(null)} style={{position:'fixed',left:8,bottom:28,width:16,height:16,opacity:0,border:0,padding:0,fontSize:16,caretColor:'transparent'}}/>
  {(focused||fieldFocus)&&<button type="button" onPointerDown={e=>e.preventDefault()} onPointerUp={()=>{input.current?.blur();fieldInput.current?.blur()}} style={{position:'absolute',left:10,top:10,zIndex:6,padding:'8px 14px',borderRadius:999,border:'1px solid rgba(230,205,160,.4)',background:'rgba(20,14,8,.72)',color:'#e9dcc0',fontSize:13,cursor:'pointer',backdropFilter:'blur(3px)'}}>Done</button>}
- {focused&&followOn&&<button type="button" onPointerDown={e=>e.preventDefault()} onPointerUp={()=>setHoldView(h=>!h)} style={{position:'absolute',right:10,bottom:10,zIndex:6,padding:'8px 14px',borderRadius:999,border:'1px solid rgba(230,205,160,.4)',background:'rgba(20,14,8,.72)',color:'#e9dcc0',fontSize:13,cursor:'pointer',backdropFilter:'blur(3px)'}}>{holdView?'Follow my line':'See whole desk'}</button>}
- </div><section className="atelier-controls">{lightMode==='lamp'&&<div className="atelier-spacing"><label>Lamp angle <input type="range" aria-label="Lamp angle" min="-32" max="40" step="1" value={lampAngle} onChange={e=>setLampAngle(Number(e.target.value))}/></label><span>tip: you can also drag the lamp head itself</span></div>}<div className="atelier-spacing"><label>Letter size <input type="range" aria-label="Letter size" min="32" max="88" step="2" value={letter.fontSize||72} onChange={e=>onChange({...letter,fontSize:Number(e.target.value)})}/></label><label>Line spacing <input type="range" aria-label="Line spacing" min="1.28" max="1.8" step=".05" value={letter.lineSpacing||1.35} onChange={e=>onChange({...letter,lineSpacing:Number(e.target.value)})}/></label><span>{metrics?.fill||0}% of the page</span><span className="ink-meter" aria-hidden="true"><i style={{width:Math.round(charge*100)+'%'}}/></span><span>Ink {Math.round(charge*100)}%</span></div>
+ 
+ </div><section className="atelier-controls">{lightMode==='lamp'&&<div className="atelier-spacing"><label>Lamp angle <input type="range" aria-label="Lamp angle" min="-32" max="40" step="1" value={lampAngle} onChange={e=>setLampAngle(Number(e.target.value))}/></label><span>tip: you can also drag the lamp head itself</span></div>}<div className="atelier-spacing"><label>Letter size <input type="range" aria-label="Letter size" min="32" max="88" step="2" value={letter.fontSize||72} onChange={e=>onChange({...letter,fontSize:Number(e.target.value)})}/></label><label>Line spacing <input type="range" aria-label="Line spacing" min="1.28" max="1.8" step=".05" value={letter.lineSpacing||1.35} onChange={e=>onChange({...letter,lineSpacing:Number(e.target.value)})}/></label><span>{metrics?.fill||0}% of the page</span></div>
  {metrics?.overflow&&<p role="status" className="atelier-overflow">Your words extend beyond this sheet. <button onClick={fit}>Fit to the page</button></p>}
- {charge<.3&&!!letter.body.trim()&&<p className="atelier-inkhint">Your ink is running dry — dip the quill to write dark again.</p>}<div className="atelier-actions"><button onClick={doDip} className={charge<.3&&!dip?'dip-pulse':''}>{dip?'Dipping…':'Dip the quill'}</button><button onClick={()=>setSigning(v=>!v)}>Sign by hand</button><button onClick={()=>setPlain(v=>!v)}>Edit text</button><button onClick={toggleSound} aria-pressed={soundOn}>{soundOn?'Sound on':'Sound off'}</button><button onClick={toggleFollow} aria-pressed={followOn}>{followOn?'Follow on':'Follow off'}</button><button onClick={toggleLight} aria-pressed={lightMode==='lamp'}>{lightMode==='lamp'?'Lamplight':'Candlelight'}</button><button className="primary" disabled={!letter.body.trim()||metrics?.overflow} onClick={onPreview}>Hold your letter ↗</button></div><p className="atelier-hint">Click the paper to write. Your layout carries through to the finished letter.</p>
+ <div className="atelier-actions"><button onClick={()=>setSigning(v=>!v)}>Sign by hand</button><button onClick={()=>setPlain(v=>!v)}>Edit text</button><button onClick={toggleSound} aria-pressed={soundOn}>{soundOn?'Sound on':'Sound off'}</button><button onClick={toggleLight} aria-pressed={lightMode==='lamp'}>{lightMode==='lamp'?'Lamplight':'Candlelight'}</button><button className="primary" disabled={!letter.body.trim()||metrics?.overflow} onClick={onPreview}>Hold your letter ↗</button></div><p className="atelier-hint">Click the paper to write. Your layout carries through to the finished letter.</p>
  </section>{plain&&<section className="atelier-editor"><label>Your words<textarea aria-label="Plain text editor" value={letter.body} maxLength={1500} onChange={e=>{prevBody.current=e.target.value;onChange({...letter,body:e.target.value})}}/></label><button onClick={()=>setPlain(false)}>Return to the desk</button></section>}
  {signing&&<section className="signature-panel"><p>A signature only you could make.</p><svg className="signature-pad" aria-label="Draw your signature" role="img" viewBox="0 0 480 130" onPointerDown={start} onPointerMove={move} onPointerUp={()=>{pen.current=false;onChange({...letter,signature:signatureDraft.current});setSignaturePreview(null)}} onPointerCancel={()=>{pen.current=false;setSignaturePreview(null)}}>{(signaturePreview||letter.signature||[]).map((s,i)=><path key={i} d={s.map((p,j)=>`${j?'L':'M'}${p[0]} ${p[1]}`).join(' ')} stroke="#39352e" strokeWidth="1.5" fill="none" strokeLinecap="round"/>)}</svg><button onClick={()=>onChange({...letter,signature:[]})}>Clear signature</button><button onClick={()=>setSigning(false)}>Keep signature</button></section>}
  </main>
