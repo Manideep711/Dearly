@@ -26,7 +26,7 @@ function quadTransform(w,h,pts){
  return `matrix3d(${a},${d},0,${g},${bb},${e},0,${hh},0,0,1,0,${cc},${f},0,1)`;
 }
 function useWood(){return useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=1024;const x=c.getContext('2d');x.fillStyle='#231e18';x.fillRect(0,0,1024,1024);let seed=12;const rand=()=>{seed=seed*16807%2147483647;return seed/2147483647};for(let i=0;i<5500;i++){const y=rand()*1024;x.strokeStyle=`rgba(${rand()>.5?'100,76,49':'8,5,3'},${rand()*.035})`;x.lineWidth=.3+rand()*2;x.beginPath();x.moveTo(0,y);for(let a=0;a<=1024;a+=30)x.lineTo(a,y+Math.sin(a*.013+y)*3+Math.sin(a*.004)*8);x.stroke()}for(let y=0;y<1024;y+=256){x.fillStyle='#080604';x.fillRect(0,y,1024,2)}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.colorSpace=THREE.SRGBColorSpace;return t},[])}
-const DIPV=new THREE.Vector3(3,-2.38,.95),RESTV=new THREE.Vector3(1.65,-2.98,1.55);
+const DIPV=new THREE.Vector3(3,-2.28,.95),RESTV=new THREE.Vector3(1.65,-2.98,1.55);
 function Feather({tip,dip,focused,pulse}){
  const group=useRef();const geometry=useMemo(()=>{const p=[],uv=[],indices=[];const count=90;for(let i=0;i<=count;i++){const t=i/count,y=t*2.25,curve=.22*t*t,width=Math.sin(Math.PI*t)**.7*.29;for(const side of [-1,1]){p.push(curve+side*width*(side<0?.78:1),y,.045*Math.sin(t*Math.PI)+Math.abs(width)*.18);uv.push(side<0?0:1,t)}if(i<count){const k=i*2;indices.push(k,k+1,k+2,k+1,k+3,k+2)}}const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();return g},[]);
  const texture=useMemo(()=>{const c=document.createElement('canvas');c.width=256;c.height=1024;const x=c.getContext('2d');x.fillStyle='#c6c0ab';x.fillRect(0,0,256,1024);for(let y=0;y<1024;y+=5){x.strokeStyle=y%15?'#8f8b7b66':'#ece8d2a0';x.beginPath();x.moveTo(0,y+55);x.lineTo(125,y);x.lineTo(256,y+38);x.stroke()}x.fillStyle='#ddd7bf';x.fillRect(123,0,3,1024);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t},[]);
@@ -36,8 +36,8 @@ function Feather({tip,dip,focused,pulse}){
 }
 function Bottle({onDip}){
  const profile=useMemo(()=>[[.001,0],[.3,0],[.37,.05],[.395,.15],[.37,.28],[.28,.37],[.185,.44],[.16,.5],[.16,.57],[.185,.575]].map(([x,y])=>new THREE.Vector2(x,y)),[]);
- return <group position={[3,-3.15,.75]} scale={1.15} onClick={e=>{e.stopPropagation();onDip()}}>
-  <mesh castShadow><latheGeometry args={[profile,36]}/><meshPhysicalMaterial color="#16211b" roughness={.22} metalness={.1} clearcoat={.8} clearcoatRoughness={.25}/></mesh>
+ return <group position={[3,-3.15,.75]} scale={1.35} onClick={e=>{e.stopPropagation();onDip()}}>
+  <mesh castShadow><latheGeometry args={[profile,36]}/><meshPhysicalMaterial color="#1b2a21" roughness={.18} metalness={.1} clearcoat={.8} clearcoatRoughness={.25}/></mesh>
   <mesh position-y={.575} rotation-x={Math.PI/2}><torusGeometry args={[.172,.022,10,36]}/><meshStandardMaterial color="#9a885d" metalness={.75} roughness={.38}/></mesh>
   <mesh position-y={.545} rotation-x={-Math.PI/2}><circleGeometry args={[.125,28]}/><meshStandardMaterial color="#05070a" roughness={.12}/></mesh>
  </group>
@@ -78,7 +78,7 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
   // table front - by projecting sample points and dollying until they fit,
   // then report the sheet's four projected corners for the input overlay.
   const sl=slope.current;if(!sl)return;sl.updateMatrixWorld(true);
-  const pts=[[-2.85,-1.9,.75],[3,-2.35,.75]].map(q=>new THREE.Vector3(...q));
+  const pts=[[-2.85,-1.9,.75],[3,-2.2,.75]].map(q=>new THREE.Vector3(...q));
   for(const [a,b] of [[-1,1],[1,1],[-1,-1],[1,-1]])pts.push(sl.localToWorld(new THREE.Vector3(a*(PW+.55)/2,b*(PH+.55)/2,0)));
   let dist=13;const v=new THREE.Vector3();
   for(let it=0;it<3;it++){
