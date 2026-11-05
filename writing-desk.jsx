@@ -90,7 +90,7 @@ function Lamp({angle,onAngle}){
  const s1=segP(B,E),s2=segP(E,H),sS=segP({x:B.x-.1,y:B.y+.03},{x:B.x+(E.x-B.x)*.55-.1,y:B.y+(E.y-B.y)*.55});
  const arm=(s,z)=><mesh position={[s.pos[0],s.pos[1],z]} rotation-z={s.rot} castShadow><cylinderGeometry args={[.027,.027,s.len,10]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>;
  const joint=(p,r)=><group position={[p.x,p.y,0]}><mesh rotation-x={Math.PI/2} castShadow><cylinderGeometry args={[r,r,.22,20]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh><mesh rotation-x={Math.PI/2} position-z={.125}><cylinderGeometry args={[r*.45,r*.45,.03,14]}/><meshStandardMaterial color={steel} metalness={.85} roughness={.3}/></mesh><mesh position-z={.143}><boxGeometry args={[r*.62,.014,.012]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh></group>;
- return <group position={[-2.9,-3.3,.75]} onPointerDown={e=>{e.stopPropagation();drag.current={x:e.clientX,y:e.clientY,a:angle||0};try{e.target.setPointerCapture(e.pointerId)}catch(err){}}} onPointerMove={e=>{if(drag.current&&onAngle)onAngle(Math.max(-32,Math.min(40,drag.current.a+(e.clientX-drag.current.x)*.25+(drag.current.y-e.clientY)*.15)))}} onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>
+ return <group position={[-2.9,-3.15,.75]} onPointerDown={e=>{e.stopPropagation();drag.current={x:e.clientX,y:e.clientY,a:angle||0};try{e.target.setPointerCapture(e.pointerId)}catch(err){}}} onPointerMove={e=>{if(drag.current&&onAngle)onAngle(Math.max(-32,Math.min(40,drag.current.a+(e.clientX-drag.current.x)*.25+(drag.current.y-e.clientY)*.15)))}} onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>
   <mesh position-y={.045} castShadow receiveShadow><cylinderGeometry args={[.34,.4,.09,28]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>
   <mesh position-y={.12} castShadow><cylinderGeometry args={[.13,.17,.07,20]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>
   {[.075,-.075].map(z=><mesh key={z} position={[0,.14,z]} castShadow><boxGeometry args={[.07,.26,.03]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>)}
@@ -103,8 +103,8 @@ function Lamp({angle,onAngle}){
    <mesh position-y={.31} castShadow><cylinderGeometry args={[.038,.038,.2,10]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>
    <mesh castShadow><cylinderGeometry args={[.085,.30,.44,24,1,true]}/><meshStandardMaterial color={black} metalness={.4} roughness={.45} side={THREE.DoubleSide}/></mesh>
    <mesh position-y={.25} castShadow><cylinderGeometry args={[.05,.085,.06,16]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh>
-   <mesh position-y={-.19}><sphereGeometry args={[.085,12,10]}/><meshBasicMaterial color="#fff3cf"/></mesh>
-   <pointLight position={[0,-.26,.02]} color="#ffdca8" intensity={22} distance={0} decay={2}/>
+   <mesh position-y={-.3}><sphereGeometry args={[.09,12,10]}/><meshBasicMaterial color="#fff3cf"/></mesh>
+   <pointLight position={[0,-.36,.02]} color="#ffdca8" intensity={22} distance={0} decay={2}/>
   </group>
  </group>
 }
@@ -123,15 +123,25 @@ function DeskScene({letter,onMetrics,onBounds,onDip,dip,onFocus,inkRef,caret,foc
   const sl=slope.current;if(!sl)return;sl.updateMatrixWorld(true);
   const pts=[[-2.85,-1.9,.75],[2.8,-2.05,.75],[-2.9,-3.34,.75],[2.8,-3.34,.75]].map(q=>new THREE.Vector3(...q));
   for(const [a,b] of [[-1,1],[1,1],[-1,-1],[1,-1]])pts.push(sl.localToWorld(new THREE.Vector3(a*(PW+.55)/2,b*(PH+.55)/2,0)));
-  let dist=13;const v=new THREE.Vector3();
-  for(let it=0;it<3;it++){
-   camera.position.set(0,-1.05,dist);camera.lookAt(0,-.35,-.2);camera.updateMatrixWorld(true);camera.updateProjectionMatrix();
+  // Fit BOTH the span and the centre. The old loop only scaled the span
+  // to fit while the camera stared at a fixed point — but the desk's
+  // projected centre sits well below that point, so on wide, short
+  // screens the correctly-sized desk still slid off the bottom edge
+  // (candle and lamp bases cropped, empty space at the top). Each pass
+  // now also pans camera and target together until the projected
+  // centre lands on the screen centre. Verified offline against the
+  // real projection math at six viewport shapes.
+  let dist=13;const v=new THREE.Vector3(),off=new THREE.Vector3(),bp=new THREE.Vector3(),bt=new THREE.Vector3(0,-.35,-.2);
+  for(let it=0;it<4;it++){
+   bp.set(0,-1.05,dist);camera.position.copy(bp).add(off);camera.lookAt(bt.clone().add(off));camera.updateMatrixWorld(true);camera.updateProjectionMatrix();
    let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
    for(const q of pts){v.copy(q).project(camera);minx=Math.min(minx,v.x);maxx=Math.max(maxx,v.x);miny=Math.min(miny,v.y);maxy=Math.max(maxy,v.y)}
    const wPx=Math.max(1,(maxx-minx)*size.width/2),hPx=Math.max(1,(maxy-miny)*size.height/2),k=Math.min((size.width-24)/wPx,(size.height-24)/hPx);
    dist/=k;
+   const D=camera.position.distanceTo(bt.clone().add(off)),visH=2*D*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)),visW=visH*(size.width/size.height);
+   off.add(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0).multiplyScalar((minx+maxx)/2*visW/2)).add(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1).multiplyScalar((miny+maxy)/2*visH/2));
   }
-  camera.position.set(0,-1.05,dist);camera.lookAt(0,-.35,-.2);camera.updateMatrixWorld(true);camera.updateProjectionMatrix();home.current.pos.set(0,-1.05,dist);
+  bp.set(0,-1.05,dist);camera.position.copy(bp).add(off);camera.lookAt(bt.clone().add(off));camera.updateMatrixWorld(true);camera.updateProjectionMatrix();home.current.pos.copy(camera.position);home.current.tgt.copy(bt).add(off);
   const corners=[[-PW/2,PH/2],[PW/2,PH/2],[PW/2,-PH/2],[-PW/2,-PH/2]].map(([x,y])=>{const q=sl.localToWorld(new THREE.Vector3(x,y,0)).project(camera);return [(q.x+1)*size.width/2,(1-q.y)*size.height/2]});
   onBounds({corners});
  },[camera,size,onBounds]);
