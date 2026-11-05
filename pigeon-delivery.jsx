@@ -35,7 +35,7 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
  // Instead an invisible anchor rides the bone, and the scene-level
  // capsule (rendered below) is placed on the anchor's true position
  // every frame: same spot, true shape.
- const anchorRef=useRef(),tmpV=useRef(new THREE.Vector3()),tmpA=useRef(new THREE.Vector3()),tmpB=useRef(new THREE.Vector3());
+ const anchorRef=useRef(),tmpV=useRef(new THREE.Vector3()),tmpA=useRef(new THREE.Vector3()),tmpB=useRef(new THREE.Vector3()),tmpS=useRef(new THREE.Vector3());
  const legR=useMemo(()=>{const leg=bird.getObjectByName('L_leg_077');return leg?leg.children[0].position.length()*.105:0},[bird]);
  useEffect(()=>{
   const leg=bird.getObjectByName('L_leg_077');if(!leg||!legR)return;
@@ -88,7 +88,7 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
    // visually wrap the leg wherever it currently points.
    leg.getWorldPosition(tmpA.current);knee.getWorldPosition(tmpB.current);capsuleRef.current.parent.worldToLocal(tmpA.current);capsuleRef.current.parent.worldToLocal(tmpB.current);
    const ab=tmpB.current.sub(tmpA.current),tt=THREE.MathUtils.clamp(tmpV.current.clone().sub(tmpA.current).dot(ab)/Math.max(1e-6,ab.lengthSq()),0,1),shin=tmpA.current.add(ab.multiplyScalar(tt)),dir=shin.sub(tmpV.current);dir.y=0;
-   if(dir.lengthSq()>1e-8){dir.normalize();capsuleRef.current.rotation.set(0,Math.atan2(dir.z,-dir.x),0)}}
+   if(dir.lengthSq()>1e-8){dir.normalize();capsuleRef.current.rotation.set(0,Math.atan2(dir.z,-dir.x),0)} const ws=anchor.getWorldScale(tmpS.current);capsuleRef.current.scale.setScalar((ws.x+ws.y+ws.z)/3*1.25/fit.scale);}
   if(capsuleRef.current)capsuleRef.current.getWorldPosition(capsuleTarget.current);
   root.current.rotation.y=THREE.MathUtils.damp(root.current.rotation.y,phase==='ready'?.3:0,3,d);
   pose.time+=d;
@@ -105,7 +105,7 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
   }
   clock.current+=d;if(phase==='arrival'){const t=Math.min(clock.current/1.35,1);root.current.position.set(-5+4.65*t,1.6-1.3*t,-2+1.85*t);if(t===1)onPhase('landing')}else if(phase==='landing'){const t=Math.min(clock.current/.95,1),remaining=Math.pow(1-t,2);root.current.position.set(-.35*remaining,.3*remaining,-.15*remaining)}else root.current.position.set(0,THREE.MathUtils.damp(root.current.position.y,phase==='feeding'?.05:0,8,d),0)});
  return <group ref={root}><group scale={fit.scale} rotation-y={-.35} position={[-fit.center.x*fit.scale,-fit.min*fit.scale,-fit.center.z*fit.scale]}><primitive object={bird} onPointerOver={e=>{e.stopPropagation();onHover('bird')}} onPointerOut={()=>onHover(null)} onClick={e=>{e.stopPropagation();onReact(e.clientX,e.clientY)}}/>
-<group ref={capsuleRef} scale={1.25} onClick={e=>{e.stopPropagation();if(phase==='ready')onCapsule();else onReact(e.clientX,e.clientY)}} onPointerOver={e=>{e.stopPropagation();onHover('capsule')}} onPointerOut={()=>onHover(null)}>
+<group ref={capsuleRef} onClick={e=>{e.stopPropagation();if(phase==='ready')onCapsule();else onReact(e.clientX,e.clientY)}} onPointerOver={e=>{e.stopPropagation();onHover('capsule')}} onPointerOut={()=>onHover(null)}>
 <mesh castShadow receiveShadow><cylinderGeometry args={[legR,legR,legR*5.2,28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>
 {[-2.35,2.35].map(y=><mesh key={'r'+y} position={[0,y*legR,0]} rotation-x={Math.PI/2} castShadow><torusGeometry args={[legR*1.03,legR*.11,8,28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>)}
 {[-1.3,1.3].map(y=><mesh key={'s'+y} position={[-legR*.95,y*legR,0]} rotation-x={Math.PI/2} scale-x={1.4} castShadow><torusGeometry args={[legR*1.5,legR*.17,8,36]}/><meshStandardMaterial color="#765132" roughness={.9} side={THREE.DoubleSide}/></mesh>)}
