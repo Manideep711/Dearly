@@ -142,3 +142,12 @@ html,body{overflow-x:clip}
 
 /* No native caret over the paper: the ink itself shows where you are. */
 .paper-fields input,.paper-fields textarea{caret-color:transparent!important}
+
+/* Writing takes the whole screen on a phone: while the letter has
+   focus, the desk stage goes full-bleed so the paper is as large as
+   the device allows. The follow toggle rides at the top of the stage,
+   clear of the keyboard; "Done" (top-left) steps back out. */
+@media(max-width:700px){
+ .atelier-stage.writing-live{position:fixed;inset:0;height:100vh;height:100dvh;max-height:none;z-index:40}
+ .atelier-stage.writing-live>button{top:10px!important;bottom:auto!important}
+}
