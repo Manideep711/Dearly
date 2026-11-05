@@ -28,7 +28,7 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
   headBase:new THREE.Quaternion(),chestBase:new THREE.Vector3(),
   offset:new THREE.Quaternion(),angles:new THREE.Euler(),applied:false,weight:0,time:0
  }),[bird]);
- const activeSeed=seeds.find(seed=>!seed.eaten)?.id;
+ const activeSeed=seeds.find(seed=>seed.grains>0)?.id;
  const feedingSpot=useMemo(()=>{
   // Find the beak's lowest point in one peck, in the model's own coordinates.
   const probe=clone(gltf.scene),probeMixer=new THREE.AnimationMixer(probe);
@@ -40,8 +40,14 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
    const tip=beak.localToWorld(new THREE.Vector3(0,.65,0));
    if(tip.y<lowest){lowest=tip.y;time=t;point.copy(tip)}
   }
+  // How far the feet themselves dip across the peck's scrub window, in
+  // model units: the feeding lift is set to exactly this, so the feet
+  // stay planted instead of sinking through the stage as she bends.
+  const legEnds=[];probe.traverse(o=>{if(/_leg_\d+$/.test(o.name)){let e=o;while(e.children.length)e=e.children[0];legEnds.push(e)}});
+  let dip=0;
+  if(legEnds.length){const lower=Math.max(0,time-.42),pv=new THREE.Vector3();const lowestAt=t=>{probeMixer.setTime(t);probe.updateMatrixWorld(true);let m=Infinity;for(const e of legEnds){e.getWorldPosition(pv);if(pv.y<m)m=pv.y}return m};const base=lowestAt(lower);let m=base;for(let t=lower;t<=lower+.42;t+=.02)m=Math.min(m,lowestAt(t));dip=Math.max(0,base-m)}
   probeMixer.stopAllAction();probeMixer.uncacheRoot(probe);
-  return {point,time};
+  return {point,time,dip};
  },[gltf,clips]);
  // The capsule is NOT parented to the leg bone: the rig's animation
  // carries scale keys on the whole leg chain (hip, leg, knee), which
@@ -58,6 +64,7 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
   anchorRef.current={anchor,leg,knee:leg.children[0]};
   return()=>{leg.remove(anchor);anchorRef.current=null};
  },[bird,legR]);
+ const legEnds=useMemo(()=>{const out=[];bird.traverse(o=>{if(/_leg_\d+$/.test(o.name)){let e=o;while(e.children.length)e=e.children[0];out.push(e)}});return out},[bird]);
  useEffect(()=>{
   clock.current=0;bitten.current=false;feedCycle.current=-1;emptyTime.current=0;feedingDone.current=false;
   const interactive=phase==='waiting'||phase==='ready';
@@ -96,7 +103,7 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
     // Grounding, not hovering: the old constant .05 lift read as the
     // bird floating. Rise only as deep as the peck itself dips, in
     // sync with it, and settle back to the floor each cycle.
-    lift.current=THREE.MathUtils.damp(lift.current,.05*(.5-.5*Math.cos(fraction*Math.PI*2)),14,d);
+    lift.current=THREE.MathUtils.damp(lift.current,Math.min(.3,feedingSpot.dip*fit.scale)*(.5-.5*Math.cos(fraction*Math.PI*2)),14,d);
     if(fraction>=.5&&feedCycle.current!==index&&activeSeed!==undefined){feedCycle.current=index;onBite(activeSeed)}
     if(activeSeed===undefined){emptyTime.current+=d;if(emptyTime.current>.65&&!feedingDone.current){feedingDone.current=true;onFed()}}else emptyTime.current=0;
    }
@@ -123,15 +130,21 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
    pose.chest.scale.set(pose.chestBase.x*(1+breath),pose.chestBase.y*(1+breath*.35),pose.chestBase.z*(1+breath));
    pose.applied=true;
   }
-  clock.current+=d;if(phase==='arrival'){const t=Math.min(clock.current/1.35,1);root.current.position.set(-5+4.65*t,1.6-1.3*t,-2+1.85*t);if(t===1)onPhase('landing')}else if(phase==='landing'){const t=Math.min(clock.current/.95,1),remaining=Math.pow(1-t,2);root.current.position.set(-.35*remaining,.3*remaining,-.15*remaining)}else root.current.position.set(0,THREE.MathUtils.damp(root.current.position.y,lift.current,8,d),0)});
+  clock.current+=d;if(phase==='arrival'){const t=Math.min(clock.current/1.35,1);root.current.position.set(-5+4.65*t,1.6-1.3*t,-2+1.85*t);if(t===1)onPhase('landing')}else if(phase==='landing'){const t=Math.min(clock.current/.95,1),remaining=Math.pow(1-t,2);root.current.position.set(-.35*remaining,.3*remaining,-.15*remaining)}else root.current.position.set(0,THREE.MathUtils.damp(root.current.position.y,lift.current,8,d),0)}
+  // Grounding clamp: while she is on the ground (anything but the
+  // arrival flight), no foot joint may end the frame below the floor —
+  // the clips' crouches and dips otherwise sink her legs into the
+  // stage, worst at landing.
+  if(phase!=='arrival'){let minY=Infinity;const wp=tmpV.current;for(const e of legEnds){e.getWorldPosition(wp);if(wp.y<minY)minY=wp.y}if(minY<.03)root.current.position.y+=.03-minY}
+ });
  return <group ref={root}><group scale={fit.scale} rotation-y={-.35} position={[-fit.center.x*fit.scale,-fit.min*fit.scale,-fit.center.z*fit.scale]}><primitive object={bird} onPointerOver={e=>{e.stopPropagation();onHover('bird')}} onPointerOut={()=>onHover(null)} onClick={e=>{e.stopPropagation();onReact(e.clientX,e.clientY)}}/>
 <group ref={capsuleRef} onClick={e=>{e.stopPropagation();if(phase==='ready')onCapsule();else onReact(e.clientX,e.clientY)}} onPointerOver={e=>{e.stopPropagation();onHover('capsule')}} onPointerOut={()=>onHover(null)}>
 <mesh castShadow receiveShadow><cylinderGeometry args={[legR,legR,legR*5.2,28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>
 {[-2.35,2.35].map(y=><mesh key={'r'+y} position={[0,y*legR,0]} rotation-x={Math.PI/2} castShadow><torusGeometry args={[legR*1.03,legR*.11,8,28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>)}
 {[-1.3,1.3].map(y=><mesh key={'s'+y} position={[-legR*.95,y*legR,0]} rotation-x={Math.PI/2} scale-x={1.4} castShadow><torusGeometry args={[legR*1.5,legR*.17,8,36]}/><meshStandardMaterial color="#765132" roughness={.9} side={THREE.DoubleSide}/></mesh>)}
-</group>{seeds.some(seed=>!seed.eaten)&&<mesh position={[feedingSpot.point.x,feedingSpot.point.y+.0015,feedingSpot.point.z]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[.03/fit.scale*9,24]}/><meshBasicMaterial map={pileTex} transparent opacity={.5} depthWrite={false}/></mesh>}{seeds.filter(seed=>!seed.eaten).map((seed,i)=><Seed key={seed.id} id={seed.id} point={feedingSpot.point} index={i} size={.03/fit.scale}/>)}</group></group>
+</group>{seeds.some(seed=>seed.grains>0)&&<mesh position={[feedingSpot.point.x,feedingSpot.point.y+.0015,feedingSpot.point.z]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[.03/fit.scale*9,24]}/><meshBasicMaterial map={pileTex} transparent opacity={.5} depthWrite={false}/></mesh>}{seeds.filter(seed=>seed.grains>0).map((seed,i)=><Seed key={seed.id} id={seed.id} point={feedingSpot.point} index={i} size={.03/fit.scale} grainsLeft={seed.grains}/>)}</group></group>
 }
-function Seed({point,index,id,size}){
+function Seed({point,index,id,size,grainsLeft}){
  // One drop lands as a little spill of three grains, each its own size,
  // tilt and tone: a single smooth oval read as a plastic pellet.
  const mesh=useRef(),age=useRef(0);
@@ -139,7 +152,7 @@ function Seed({point,index,id,size}){
   const tones=['#e8c97a','#dcb968','#cfa856','#eee0ac','#c49a4e','#b98a44'];
   return{cx:(h(11)-.5)*size*8,cz:(h(12)-.5)*size*8,grains:[0,1,2].map(k=>({dx:(h(k*7+1)-.5)*size*7,dz:(h(k*7+2)-.5)*size*7,sx:.8+h(k*7+3)*.5,sz:1.15+h(k*7+4)*.6,rot:h(k*7+5)*Math.PI*2,tilt:(h(k*7+6)-.5)*.6,tone:tones[(id+k*2)%tones.length]}))}},[id,size]);
  useFrame((_,dt)=>{age.current+=dt;if(mesh.current)mesh.current.position.y=point.y+Math.max(0,1-age.current/.32)*size*7});
- return <group ref={mesh} position={[point.x+v.cx,point.y,point.z+v.cz]}>{v.grains.map((g,k)=><mesh key={k} position={[g.dx,0,g.dz]} rotation={[g.tilt,g.rot,g.tilt*.6]} scale={[size*g.sx,size*.5,size*g.sz]} castShadow><sphereGeometry args={[1,10,8]}/><meshStandardMaterial color={g.tone} roughness={.9}/></mesh>)}</group>
+ return <group ref={mesh} position={[point.x+v.cx,point.y,point.z+v.cz]}>{v.grains.slice(0,grainsLeft).map((g,k)=><mesh key={k} position={[g.dx,0,g.dz]} rotation={[g.tilt,g.rot,g.tilt*.6]} scale={[size*g.sx,size*.5,size*g.sz]} castShadow><sphereGeometry args={[1,10,8]}/><meshStandardMaterial color={g.tone} roughness={.9}/></mesh>)}</group>
 }
 function DeliveryCamera({phase,zoom,capsuleTarget}){
  const target=useRef(new THREE.Vector3(0,.65,0));
@@ -183,10 +196,13 @@ export default function PigeonDelivery({onOpen,onWrite}){
  },[]);
  const dropSeed=useCallback(()=>{
   if(!['waiting','ready','feeding'].includes(phase)||energy.current+seedQueue.current.length*20>80.01)return;
-  const next=[...seedQueue.current,{id:++seedNumber.current,eaten:false}];seedQueue.current=next;setSeeds(next);setZoom(0);change('feeding');
+  const next=[...seedQueue.current,{id:++seedNumber.current,grains:3}];seedQueue.current=next;setSeeds(next);setZoom(0);change('feeding');
  },[phase,change]);
  const bite=useCallback(id=>{
-  if(!seedQueue.current.some(s=>s.id===id))return;
+  const seed=seedQueue.current.find(s=>s.id===id);if(!seed)return;
+  // One peck takes ONE grain, not the whole spill: the pile visibly
+  // shrinks grain by grain, and only the last grain fills her up.
+  if(seed.grains>1){const next=seedQueue.current.map(s=>s.id===id?{...s,grains:s.grains-1}:s);seedQueue.current=next;setSeeds(next);return}
   const next=seedQueue.current.filter(s=>s.id!==id);seedQueue.current=next;setSeeds(next);
   energy.current=Math.min(100,energy.current+20);lastMeal.current=Date.now();everEaten.current++;
   setFullness(energy.current);

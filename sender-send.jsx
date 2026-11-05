@@ -86,6 +86,13 @@ function RollingLetter({texture, phase, sealing, sealT0, manualRoll, onRolled}) 
       target = SCROLL_POS.clone().lerp(CAPSULE_POS, p);
       scale = THREE.MathUtils.lerp(.3, .1, p);
     } else if (rolled) { target = SCROLL_POS; scale = .3; }
+    // The rolled sheet's coil does not sit at the group's origin: the
+    // deform parks it at the sheet's top edge (local y +3.03, z +.19).
+    // Without this compensation the scroll hovered ~0.9 above the
+    // capsule's mouth while sealing — visibly floating over a tube it
+    // was supposed to slide into. Drop the group by the coil's offset
+    // so the tube of paper travels exactly along the capsule's axis.
+    if (rolled) { target = target.clone(); target.y -= 3.03 * scale; target.z -= .19 * scale; }
     const k = 1 - Math.exp(-.016 * 3.2);
     g.position.lerp(target, k);
     g.scale.setScalar(THREE.MathUtils.lerp(g.scale.x, scale, k));
@@ -141,6 +148,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
     return {bird, mixer: new THREE.AnimationMixer(bird), clips: createPigeonClips(gltf.animations[0]), fit: {scale: 3.35 / Math.max(size.x, size.y, size.z), center, min: b.min.y}};
   }, [gltf]);
   const leg = useMemo(() => bird.getObjectByName('L_leg_077'), [bird]);
+  const legEnds = useMemo(() => { const out = []; bird.traverse(o => { if (/_leg_\d+$/.test(o.name)) { let e = o; while (e.children.length) e = e.children[0]; out.push(e); } }); return out; }, [bird]);
   // The tied capsule is NOT parented to the leg bone: the rig animates
   // scale on the whole leg chain, squashing any bone-child into a
   // bell/pawn shape (the receiver had the identical bug). An invisible
@@ -216,6 +224,18 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
     } else {
       r.position.copy(BIRD_LAND);
     }
+    // Grounding: the fit offset only knows the rest pose, so the clips'
+    // crouches and dips push the feet below the stage — legs visibly
+    // sinking away, worst at landing and in the takeoff crouch. While
+    // she is on the ground (standing, or the grounded ends of arrival
+    // and departure), lift the root just enough to keep the lowest
+    // foot joint at the floor.
+    const tNow = phase === 'arrival' ? Math.min(clock.current / (T(1600) / 1000), 1) : phase === 'depart' ? Math.min(clock.current / (T(3400) / 1000), 1) : 0;
+    if (phase === 'attach' || (phase === 'arrival' && tNow >= .8) || (phase === 'depart' && tNow <= .25)) {
+      let minY = Infinity; const wp = tmpV.current;
+      for (const e of legEnds) { e.getWorldPosition(wp); if (wp.y < minY) minY = wp.y; }
+      if (minY < .03) r.position.y += .03 - minY;
+    }
   });
   return <group ref={root} visible={false}><group scale={fit.scale} rotation-y={-.9} position={[-fit.center.x * fit.scale, -fit.min * fit.scale, -fit.center.z * fit.scale]}><primitive object={bird}/>
     <group ref={legCapsuleRef} visible={attached}>
@@ -232,7 +252,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
 // camera drifts between shots, and on portrait screens it pulls back
 // until the shot fits the width (the first framing was landscape-only
 // and pushed the landed pigeon clean off a phone screen).
-const PHASE_CAM = {hold: [-1.55, 2.55, 8.6], roll: [-1.55, 2.55, 8.6], capsule: [-.35, 1.95, 7.2], arrival: [1.05, 2.3, 7.2], attach: [1.05, 2.3, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
+const PHASE_CAM = {hold: [-1.55, 2.55, 8.6], roll: [-1.55, 2.55, 8.6], capsule: [.14, 1.5, 7.2], arrival: [1.05, 2.3, 7.2], attach: [2.05, 1.45, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
 function PhaseCamera({phase}) {
   const camera = useThree(s => s.camera), size = useThree(s => s.size);
   useFrame((_, dt) => {
@@ -247,6 +267,14 @@ function PhaseCamera({phase}) {
   return null;
 }
 
+function SendShadow({phase}) {
+  const mat = useRef();
+  const tex = useMemo(() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const g = x.createRadialGradient(64, 64, 2, 64, 64, 64); g.addColorStop(0, 'rgba(0,0,0,.5)'); g.addColorStop(.6, 'rgba(0,0,0,.26)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }, []);
+  useEffect(() => () => tex.dispose(), [tex]);
+  useFrame((_, dt) => { if (mat.current) mat.current.opacity = THREE.MathUtils.damp(mat.current.opacity, phase === 'attach' || phase === 'depart' ? .5 : phase === 'arrival' ? .3 : 0, 5, dt); });
+  return <mesh position={[BIRD_LAND.x, .012, BIRD_LAND.z]} rotation-x={-Math.PI / 2} raycast={() => null}><circleGeometry args={[1.05, 32]}/><meshBasicMaterial ref={mat} map={tex} transparent opacity={0} depthWrite={false}/></mesh>;
+}
+
 function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, legTarget, manualRoll, onRolled}) {
   const tex = useLetterTexture(letter, undefined, true);
   const surface = useSurface();
@@ -259,7 +287,8 @@ function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, le
     <directionalLight position={[-3, 5, 7]} intensity={2.3} color="#ffecd0"/>
     <directionalLight position={[3.5, 4, -3]} intensity={1} color="#b9c8d8"/>
     <pointLight position={[5, -2, 4]} intensity={12} color="#b7c6ce"/>
-    <mesh position={[0, 0, -.6]}><planeGeometry args={[200, 200]}/><meshStandardMaterial color="#36342f" roughness={1} bumpMap={surface} bumpScale={.035}/></mesh>
+    <mesh position={[0, 0, -6]}><planeGeometry args={[200, 200]}/><meshStandardMaterial color="#36342f" roughness={1} bumpMap={surface} bumpScale={.035}/></mesh>
+    <SendShadow phase={phase}/>
     <RollingLetter texture={tex} phase={phase} sealing={sealing} sealT0={sealT0} manualRoll={manualRoll} onRolled={onRolled}/>
     <CapsuleRig phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} legTarget={legTarget}/>
     <SenderBird phase={phase} attached={attached} onLanded={onLanded} legTarget={legTarget}/>
