@@ -31,21 +31,24 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
  useEffect(()=>{
   const leg=bird.getObjectByName('L_leg_077');if(!leg)return;
   // Skeleton-local dimensions: the imported rig and scene use different units.
-  const length=leg.children[0].position.length(),r=length*.14;
+  // Slimmer, polished brass — identical builder to the sender's leg
+  // capsule, so the capsule found here is the one that was tied on.
+  const length=leg.children[0].position.length(),r=length*.105;
   const attachment=new THREE.Group();attachment.position.y=length*.55;
-  const brass=new THREE.MeshStandardMaterial({color:'#c2a16a',metalness:.55,roughness:.4});
+  const brass=new THREE.MeshStandardMaterial({color:'#c9a45c',metalness:.85,roughness:.32});
   const leather=new THREE.MeshStandardMaterial({color:'#765132',roughness:.9,side:THREE.DoubleSide});
-  const tube=new THREE.Mesh(new THREE.CylinderGeometry(r,r,r*3.8,32),brass);
-  tube.position.x=r*1.65;attachment.add(tube);
-  for(const y of [-1.55,1.55]){
-   const rim=new THREE.Mesh(new THREE.TorusGeometry(r*1.02,r*.09,8,32),brass);
-   rim.rotation.x=Math.PI/2;rim.position.set(r*1.65,y*r,0);attachment.add(rim);
+  const tube=new THREE.Mesh(new THREE.CylinderGeometry(r,r,r*5.2,32),brass);
+  tube.position.x=r*1.9;attachment.add(tube);
+  for(const y of [-2.35,2.35]){
+   const rim=new THREE.Mesh(new THREE.TorusGeometry(r*1.02,r*.1,8,32),brass);
+   rim.rotation.x=Math.PI/2;rim.position.set(r*1.9,y*r,0);attachment.add(rim);
   }
   // Two continuous leather loops embrace both the shin and the message tube.
-  for(const y of [-.85,.85]){
-   const strap=new THREE.Mesh(new THREE.TorusGeometry(r*1.35,r*.15,8,40),leather);
-   strap.rotation.x=Math.PI/2;strap.scale.x=1.43;strap.position.set(r*.8,y*r,0);attachment.add(strap);
+  for(const y of [-1.3,1.3]){
+   const strap=new THREE.Mesh(new THREE.TorusGeometry(r*1.5,r*.17,8,40),leather);
+   strap.rotation.x=Math.PI/2;strap.scale.x=1.4;strap.position.set(r*.95,y*r,0);attachment.add(strap);
   }
+  attachment.scale.setScalar(1.25);
   attachment.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.userData.capsule=true}});
   capsuleRef.current=attachment;leg.add(attachment);
   return()=>{leg.remove(attachment);attachment.traverse(o=>o.geometry?.dispose());brass.dispose();leather.dispose()};
