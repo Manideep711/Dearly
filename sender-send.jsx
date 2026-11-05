@@ -6,7 +6,11 @@ import * as THREE from 'three';
 import {useLetterTexture} from './letter-render';
 import {createPigeonClips} from './pigeon-clips';
 import {useSurface} from './physical';
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import './sender-send.css';
+
+function SendEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
+ useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.3;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
 
 // Sender finish: the missing second half of Dearly.
 // hold -> roll -> capsule -> arrival -> attach -> depart -> sent
@@ -248,10 +252,12 @@ function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, le
   const surface = useSurface();
   return <>
     <PhaseCamera phase={phase}/>
-    <color attach="background" args={['#191a17']}/>
-    <ambientLight intensity={1.15}/>
-    <hemisphereLight args={['#e7e5de', '#4b3b30', 1.5]}/>
-    <directionalLight position={[-3, 5, 7]} intensity={2.1} color="#ffecd0"/>
+    <color attach="background" args={['#1c1b15']}/>
+    <SendEnv/>
+    <ambientLight intensity={.65}/>
+    <hemisphereLight args={['#e7e5de', '#4b3b30', .85]}/>
+    <directionalLight position={[-3, 5, 7]} intensity={2.3} color="#ffecd0"/>
+    <directionalLight position={[3.5, 4, -3]} intensity={1} color="#b9c8d8"/>
     <pointLight position={[5, -2, 4]} intensity={12} color="#b7c6ce"/>
     <mesh position={[0, 0, -.6]}><planeGeometry args={[200, 200]}/><meshStandardMaterial color="#36342f" roughness={1} bumpMap={surface} bumpScale={.035}/></mesh>
     <RollingLetter texture={tex} phase={phase} sealing={sealing} sealT0={sealT0} manualRoll={manualRoll} onRolled={onRolled}/>

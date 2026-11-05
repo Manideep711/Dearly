@@ -4,10 +4,25 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone} from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three';
 import {createPigeonClips} from './pigeon-clips';
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+// Staging helpers: a soft radial texture (contact shadow / light pool),
+// a procedural room environment so brass and feathers have something
+// real to reflect, and a graded backdrop instead of a flat void.
+function radialTexture(stops){const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');const g=x.createRadialGradient(64,64,2,64,64,64);for(const[o,col]of stops)g.addColorStop(o,col);x.fillStyle=g;x.fillRect(0,0,128,128);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t}
+function StageEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
+ useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.35;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
+function StageBackdrop(){const scene=useThree(s=>s.scene);
+ const tex=useMemo(()=>{const c=document.createElement('canvas');c.width=4;c.height=512;const x=c.getContext('2d');const g=x.createLinearGradient(0,0,0,512);g.addColorStop(0,'#35372c');g.addColorStop(.55,'#24261f');g.addColorStop(1,'#151713');x.fillStyle=g;x.fillRect(0,0,4,512);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t},[]);
+ useEffect(()=>{scene.background=tex;return()=>{scene.background=null;tex.dispose()}},[scene,tex]);return null}
+function ContactShadow({phase}){const mat=useRef();const tex=useMemo(()=>radialTexture([[0,'rgba(0,0,0,.5)'],[.6,'rgba(0,0,0,.26)'],[1,'rgba(0,0,0,0)']]),[]);
+ useEffect(()=>()=>tex.dispose(),[tex]);
+ useFrame((_,dt)=>{if(mat.current)mat.current.opacity=THREE.MathUtils.damp(mat.current.opacity,phase==='arrival'?0:.55,5,dt)});
+ return <mesh position={[0,.012,0]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[.95,32]}/><meshBasicMaterial ref={mat} map={tex} transparent opacity={0} depthWrite={false}/></mesh>}
 function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,onFed,onCapsule,capsuleTarget,onHover}){
  const gltf=useLoader(GLTFLoader,import.meta.env.BASE_URL+'models/pigeon.glb');
- const feedingAction=useRef(),feedCycle=useRef(-1),emptyTime=useRef(0),feedingDone=useRef(false);const capsuleRef=useRef();const root=useRef(),clock=useRef(0),previous=useRef(),bitten=useRef(false);
+ const feedingAction=useRef(),feedCycle=useRef(-1),emptyTime=useRef(0),feedingDone=useRef(false),lift=useRef(0);const capsuleRef=useRef();const root=useRef(),clock=useRef(0),previous=useRef(),bitten=useRef(false);
  const {bird,mixer,clips,fit}=useMemo(()=>{const bird=clone(gltf.scene);bird.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;if(o.name==='poopMesh_Pigeon_mainMat_0')o.visible=false;const mats=Array.isArray(o.material)?o.material:[o.material];o.material=mats.map(m=>{const c=m.clone();if(c.name==='Pigeon_mainMat'){c.transparent=false;c.alphaTest=.45;c.depthWrite=true;c.side=THREE.DoubleSide}return c});if(!Array.isArray(gltf.scene.getObjectByName(o.name)?.material))o.material=o.material[0]}});bird.updateMatrixWorld(true);const b=new THREE.Box3().setFromObject(bird),size=b.getSize(new THREE.Vector3()),center=b.getCenter(new THREE.Vector3());return{bird,mixer:new THREE.AnimationMixer(bird),clips:createPigeonClips(gltf.animations[0]),fit:{scale:2.5/Math.max(size.x,size.y,size.z),center,min:b.min.y,size}}},[gltf]);
+ const pileTex=useMemo(()=>radialTexture([[0,'rgba(0,0,0,.42)'],[1,'rgba(0,0,0,0)']]),[]);
  const livingPose=useMemo(()=>({
   head:bird.getObjectByName('head1_09'),chest:bird.getObjectByName('chest_059'),
   headBase:new THREE.Quaternion(),chestBase:new THREE.Vector3(),
@@ -74,14 +89,19 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
   if(pose.applied){pose.head?.quaternion.copy(pose.headBase);pose.chest?.scale.copy(pose.chestBase)}
   if(phase==='feeding'&&feedingAction.current){
    const t=clock.current,lower=Math.max(0,feedingSpot.time-.42);
-   if(t<.65){feedingAction.current.time=lower}
+   if(t<.65){feedingAction.current.time=lower;lift.current=THREE.MathUtils.damp(lift.current,0,10,d)}
    else{
     const cycle=(t-.65)/.9,index=Math.floor(cycle),fraction=cycle-index;
     feedingAction.current.time=lower+.42*(.5-.5*Math.cos(fraction*Math.PI*2));
+    // Grounding, not hovering: the old constant .05 lift read as the
+    // bird floating. Rise only as deep as the peck itself dips, in
+    // sync with it, and settle back to the floor each cycle.
+    lift.current=THREE.MathUtils.damp(lift.current,.05*(.5-.5*Math.cos(fraction*Math.PI*2)),14,d);
     if(fraction>=.5&&feedCycle.current!==index&&activeSeed!==undefined){feedCycle.current=index;onBite(activeSeed)}
     if(activeSeed===undefined){emptyTime.current+=d;if(emptyTime.current>.65&&!feedingDone.current){feedingDone.current=true;onFed()}}else emptyTime.current=0;
    }
   }
+  if(phase!=='feeding')lift.current=THREE.MathUtils.damp(lift.current,0,8,d);
   mixer.update(d);
   if(anchorRef.current&&capsuleRef.current){const {anchor,leg,knee}=anchorRef.current;anchor.getWorldPosition(tmpV.current);capsuleRef.current.parent.worldToLocal(tmpV.current);capsuleRef.current.position.copy(tmpV.current);
    // Turn the capsule's strap side toward the shin, so the loops
@@ -103,18 +123,22 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
    pose.chest.scale.set(pose.chestBase.x*(1+breath),pose.chestBase.y*(1+breath*.35),pose.chestBase.z*(1+breath));
    pose.applied=true;
   }
-  clock.current+=d;if(phase==='arrival'){const t=Math.min(clock.current/1.35,1);root.current.position.set(-5+4.65*t,1.6-1.3*t,-2+1.85*t);if(t===1)onPhase('landing')}else if(phase==='landing'){const t=Math.min(clock.current/.95,1),remaining=Math.pow(1-t,2);root.current.position.set(-.35*remaining,.3*remaining,-.15*remaining)}else root.current.position.set(0,THREE.MathUtils.damp(root.current.position.y,phase==='feeding'?.05:0,8,d),0)});
+  clock.current+=d;if(phase==='arrival'){const t=Math.min(clock.current/1.35,1);root.current.position.set(-5+4.65*t,1.6-1.3*t,-2+1.85*t);if(t===1)onPhase('landing')}else if(phase==='landing'){const t=Math.min(clock.current/.95,1),remaining=Math.pow(1-t,2);root.current.position.set(-.35*remaining,.3*remaining,-.15*remaining)}else root.current.position.set(0,THREE.MathUtils.damp(root.current.position.y,lift.current,8,d),0)});
  return <group ref={root}><group scale={fit.scale} rotation-y={-.35} position={[-fit.center.x*fit.scale,-fit.min*fit.scale,-fit.center.z*fit.scale]}><primitive object={bird} onPointerOver={e=>{e.stopPropagation();onHover('bird')}} onPointerOut={()=>onHover(null)} onClick={e=>{e.stopPropagation();onReact(e.clientX,e.clientY)}}/>
 <group ref={capsuleRef} onClick={e=>{e.stopPropagation();if(phase==='ready')onCapsule();else onReact(e.clientX,e.clientY)}} onPointerOver={e=>{e.stopPropagation();onHover('capsule')}} onPointerOut={()=>onHover(null)}>
 <mesh castShadow receiveShadow><cylinderGeometry args={[legR,legR,legR*5.2,28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>
 {[-2.35,2.35].map(y=><mesh key={'r'+y} position={[0,y*legR,0]} rotation-x={Math.PI/2} castShadow><torusGeometry args={[legR*1.03,legR*.11,8,28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>)}
 {[-1.3,1.3].map(y=><mesh key={'s'+y} position={[-legR*.95,y*legR,0]} rotation-x={Math.PI/2} scale-x={1.4} castShadow><torusGeometry args={[legR*1.5,legR*.17,8,36]}/><meshStandardMaterial color="#765132" roughness={.9} side={THREE.DoubleSide}/></mesh>)}
-</group>{seeds.filter(seed=>!seed.eaten).map((seed,i)=><Seed key={seed.id} point={feedingSpot.point} index={i} size={.026/fit.scale}/>)}</group></group>
+</group>{seeds.some(seed=>!seed.eaten)&&<mesh position={[feedingSpot.point.x,feedingSpot.point.y+.0015,feedingSpot.point.z]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[.026/fit.scale*8.5,24]}/><meshBasicMaterial map={pileTex} transparent opacity={.5} depthWrite={false}/></mesh>}{seeds.filter(seed=>!seed.eaten).map((seed,i)=><Seed key={seed.id} id={seed.id} point={feedingSpot.point} index={i} size={.026/fit.scale}/>)}</group></group>
 }
-function Seed({point,index,size}){
+function Seed({point,index,id,size}){
+ // Every grain differs: scattered in a loose pile by the beak (not a
+ // row), varied size, tilt and tone, dropped from just above the ground.
  const mesh=useRef(),age=useRef(0);
- useFrame((_,dt)=>{age.current+=dt;mesh.current.position.y=point.y+Math.max(0,1-age.current/.45)*size*18});
- return <mesh ref={mesh} position={[point.x+index*size*1.5,point.y,point.z+Math.sin(index*2)*size*2]} scale={[size,size*.55,size*1.4]} castShadow><sphereGeometry args={[1,12,8]}/><meshStandardMaterial color="#e3bd70" roughness={.9}/></mesh>
+ const v=useMemo(()=>{const h=n=>{const s=Math.sin(id*127.1+n*311.7)*43758.5453;return s-Math.floor(s)};
+  return{dx:(h(1)-.5)*size*9,dz:(h(2)-.5)*size*9,sx:.85+h(3)*.45,sz:1.2+h(4)*.55,rot:h(5)*Math.PI*2,tilt:(h(6)-.5)*.5,tone:['#e8c97a','#dcb968','#cfa856','#eee0ac','#c49a4e'][id%5]}},[id,size]);
+ useFrame((_,dt)=>{age.current+=dt;if(mesh.current)mesh.current.position.y=point.y+Math.max(0,1-age.current/.32)*size*7});
+ return <mesh ref={mesh} position={[point.x+v.dx,point.y,point.z+v.dz]} rotation={[v.tilt,v.rot,v.tilt*.6]} scale={[size*v.sx,size*.5,size*v.sz]} castShadow><sphereGeometry args={[1,10,8]}/><meshStandardMaterial color={v.tone} roughness={.85}/></mesh>
 }
 function DeliveryCamera({phase,zoom,capsuleTarget}){
  const target=useRef(new THREE.Vector3(0,.65,0));
@@ -137,6 +161,9 @@ export default function PigeonDelivery({onOpen,onWrite}){
  const energy=useRef(0),lastMeal=useRef(0),everEaten=useRef(0),isUnlocked=useRef(false),petTimer=useRef();
  const seedQueue=useRef([]),seedNumber=useRef(0),reactionCount=useRef(0),reacting=useRef(false);
  const capsuleTarget=useRef(new THREE.Vector3(0,.3,0)),container=useRef();
+ const groundTex=useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');x.fillStyle='#35362c';x.fillRect(0,0,256,256);for(let i=0;i<5200;i++){x.fillStyle=Math.random()<.5?'rgba(255,246,220,.05)':'rgba(0,0,0,.09)';x.fillRect(Math.random()*256,Math.random()*256,1.4,1.4)}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(6,6);t.colorSpace=THREE.SRGBColorSpace;return t},[]);
+ const poolTex=useMemo(()=>radialTexture([[0,'rgba(255,224,168,.20)'],[.55,'rgba(255,224,168,.08)'],[1,'rgba(255,224,168,0)']]),[]);
+ useEffect(()=>()=>{groundTex.dispose();poolTex.dispose()},[groundTex,poolTex]);
  const change=useCallback(p=>{reacting.current=false;setReaction(0);setPhase(p)},[]);
  const endReaction=useCallback(()=>{reacting.current=false;setReaction(0)},[]);
  const react=useCallback((x,y)=>{
@@ -178,8 +205,8 @@ export default function PigeonDelivery({onOpen,onWrite}){
  const captions={arrival:'A little messenger. A long way home.',landing:'Something precious has arrived.',waiting:'A little company. A little kindness.',feeding:'One small seed. A little kindness.',ready:'A little gift, just for you.'};
  return <div className={"pigeon-delivery "+(hover==='bird'?'pet-hover':hover==='capsule'?'capsule-hover':'')} ref={container}>
  <Canvas shadows camera={{position:[2.6,1.65,3.6],fov:40}} dpr={[1,1.5]} onCreated={({camera})=>camera.lookAt(0,.65,0)}>
- <DeliveryCamera phase={phase} zoom={zoom} capsuleTarget={capsuleTarget}/><color attach="background" args={['#24261f']}/><hemisphereLight args={['#f1e9d7','#77735e',2.4]}/><directionalLight position={[2,5,4]} intensity={3} castShadow shadow-mapSize={[1024,1024]}/>
- <mesh rotation-x={-Math.PI/2} receiveShadow onClick={e=>{e.stopPropagation();dropSeed()}}><planeGeometry args={[100,100]}/><meshStandardMaterial color="#393a30" roughness={1}/></mesh>
+ <DeliveryCamera phase={phase} zoom={zoom} capsuleTarget={capsuleTarget}/><StageEnv/><StageBackdrop/><hemisphereLight args={['#f1e9d7','#5c5847',.8]}/><directionalLight position={[2.5,5,3.5]} intensity={2.6} color="#ffe3b3" castShadow shadow-mapSize={[1024,1024]}/><directionalLight position={[-3.5,2.5,-3.5]} intensity={1.2} color="#b9c8d8"/>
+ <mesh rotation-x={-Math.PI/2} receiveShadow onClick={e=>{e.stopPropagation();dropSeed()}}><planeGeometry args={[60,60]}/><meshStandardMaterial map={groundTex} roughness={1}/></mesh><mesh position={[0,.01,0]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[2.6,40]}/><meshBasicMaterial map={poolTex} transparent depthWrite={false}/></mesh><ContactShadow phase={phase}/>
  <Suspense fallback={null}><Messenger phase={phase} onPhase={change} reaction={reaction} onReact={react} onReactionEnd={endReaction} seeds={seeds} onBite={bite} onFed={fed} onCapsule={onOpen} capsuleTarget={capsuleTarget} onHover={setHover}/></Suspense>
  </Canvas><div className="vignette"/><header><span className="brand">dearly<span>LETTERS, FELT.</span></span><button onClick={onWrite}>Write a letter</button></header>
  <div className="caption"><p>THE PIGEON POST</p><h1>{captions[phase]}</h1></div>
