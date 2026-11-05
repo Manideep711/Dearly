@@ -1,9 +1,10 @@
 // Keep cursive joins intact by varying whole words, then distress only the ink mask.
-export function createInkLayer(width,height,color){
+export function createInkLayer(width,height,color,face){
+ const typeMode=face==='type',family=typeMode?'"Special Elite", monospace':'"Mrs Saint Delafield", cursive';
  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
  const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.fillStyle=color;
  let seed=391;const random=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
- return {canvas,write(text,y,size,levels){ctx.font=`${size}px "Mrs Saint Delafield", cursive`;let cursor=160,wi=0;for(const word of text.split(/(\s+)/)){const advance=ctx.measureText(word).width;if(word.trim()){const lv=levels?levels[wi++]:null;ctx.save();ctx.translate(cursor,y+(random()-.5)*1.7);ctx.rotate((random()-.5)*.014);ctx.scale(1, .985+random()*.03);ctx.globalAlpha=Math.min(1,(.98+random()*.02)*(lv?lv.a:1));ctx.strokeStyle=color;ctx.lineWidth=.7;ctx.lineJoin="round";if(lv&&lv.wet){ctx.shadowColor=color;ctx.shadowBlur=1.6}ctx.strokeText(word,0,0);ctx.fillText(word,0,0);ctx.restore()}cursor+=advance}return cursor-160},finish(fast=false){
+ return {canvas,write(text,y,size,levels){ctx.font=`${size}px ${family}`;let cursor=160,wi=0;for(const word of text.split(/(\s+)/)){const advance=ctx.measureText(word).width;if(word.trim()){const lv=levels?levels[wi++]:null;ctx.save();if(typeMode){ctx.translate(cursor,y);ctx.globalAlpha=Math.min(1,(.9+random()*.1)*(lv?lv.a:1))}else{ctx.translate(cursor,y+(random()-.5)*1.7);ctx.rotate((random()-.5)*.014);ctx.scale(1, .985+random()*.03);ctx.globalAlpha=Math.min(1,(.98+random()*.02)*(lv?lv.a:1))}ctx.strokeStyle=color;ctx.lineWidth=.7;ctx.lineJoin="round";if(lv&&lv.wet){ctx.shadowColor=color;ctx.shadowBlur=1.6}ctx.strokeText(word,0,0);ctx.fillText(word,0,0);ctx.restore()}cursor+=advance}return cursor-160},finish(fast=false){
  if(fast)return canvas;
  const source=ctx.getImageData(0,0,width,height),out=ctx.createImageData(width,height),a=source.data,b=out.data;
  const alpha=(x,y)=>a[(Math.max(0,Math.min(height-1,y))*width+Math.max(0,Math.min(width-1,x)))*4+3];
