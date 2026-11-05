@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import {createInkLayer,compositeInk} from './ink';
 import {layoutLetter,PAGE} from './letter-layout';
 import {paperSource} from './paper-picker';
-export function useLetterTexture(letter,onLayout,live=false){
+export function useLetterTexture(letter,onLayout,live=false,inkRef=null){
  const paper=useLoader(THREE.TextureLoader,paperSource(letter));const[font,setFont]=useState(0);
  useEffect(()=>{let alive=true;document.fonts.load('72px "Mrs Saint Delafield"').then(()=>{if(alive)setFont(1)});return()=>{alive=false}},[]);
  // Background processing is cached independently of typing.
@@ -19,7 +19,22 @@ export function useLetterTexture(letter,onLayout,live=false){
  const texture=useMemo(()=>{
   const c=document.createElement('canvas');c.width=PAGE.width;c.height=PAGE.height;const x=c.getContext('2d');x.drawImage(paperBase,0,0);
   const layout=layoutLetter(x,letter),ink=createInkLayer(c.width,c.height,letter.ink||'#39352e');
-  for(const row of layout.lines)ink.write(row.text,row.baseline,row.size);
+  // Live ink (desk only): each body word remembers the charge it was written
+  // with and stays "wet" (darker, slightly bleeding) for its first seconds.
+  let wordStyles=null;
+  if(inkRef){
+   wordStyles=new Map();const now=performance.now();
+   if(inkRef.words.size>2000)inkRef.words.clear();
+   for(const row of layout.bodyLines){
+    const arr=row.text.split(/(\s+)/).filter(w=>w.trim()).map((w,i)=>{
+     const key=row.start+'|'+i+'|'+w;let rec=inkRef.words.get(key);
+     if(!rec){rec={level:inkRef.charge(),born:now};inkRef.words.set(key,rec)}
+     return {a:.34+.66*Math.pow(Math.max(0,Math.min(1,rec.level)),1.15),wet:now-rec.born<2800};
+    });
+    wordStyles.set(row,arr);
+   }
+  }
+  for(const row of layout.lines)ink.write(row.text,row.baseline,row.size,row.kind==='body'&&wordStyles?wordStyles.get(row):null);
   const inkCanvas=ink.finish(live);
   if(Array.isArray(letter.signature)){
    const sx=inkCanvas.getContext('2d');sx.save();sx.translate(160,layout.signatureY);sx.scale(2,1.3);sx.strokeStyle=letter.ink||'#39352e';sx.lineWidth=1.8;sx.lineCap='round';sx.lineJoin='round';
@@ -27,7 +42,7 @@ export function useLetterTexture(letter,onLayout,live=false){
   }
   compositeInk(x,inkCanvas);
   const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;t.userData={lines:layout.lines.filter(r=>r.text.trim()),layout,paperBase,ink:inkCanvas};return t;
- },[paperBase,letter,font,live]);
+ },[paperBase,letter,font,live,inkRef?inkRef.tick:0]);
  useEffect(()=>{onLayout?.(texture.userData.lines,texture.userData.layout)},[texture,onLayout]);
  useEffect(()=>()=>texture.dispose(),[texture]);return texture;
 }
