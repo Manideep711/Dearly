@@ -28,31 +28,21 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
   probeMixer.stopAllAction();probeMixer.uncacheRoot(probe);
   return {point,time};
  },[gltf,clips]);
+ // The capsule is NOT parented to the leg bone: the rig's animation
+ // carries scale keys on the whole leg chain (hip, leg, knee), which
+ // squash any child of the bone into a flared bell/pawn shape — that
+ // deformation, not the capsule's own geometry, made it look wrong.
+ // Instead an invisible anchor rides the bone, and the scene-level
+ // capsule (rendered below) is placed on the anchor's true position
+ // every frame: same spot, true shape.
+ const anchorRef=useRef(),tmpV=useRef(new THREE.Vector3()),tmpA=useRef(new THREE.Vector3()),tmpB=useRef(new THREE.Vector3());
+ const legR=useMemo(()=>{const leg=bird.getObjectByName('L_leg_077');return leg?leg.children[0].position.length()*.105:0},[bird]);
  useEffect(()=>{
-  const leg=bird.getObjectByName('L_leg_077');if(!leg)return;
-  // Skeleton-local dimensions: the imported rig and scene use different units.
-  // Slimmer, polished brass — identical builder to the sender's leg
-  // capsule, so the capsule found here is the one that was tied on.
-  const length=leg.children[0].position.length(),r=length*.105;
-  const attachment=new THREE.Group();attachment.position.y=length*.55;
-  const brass=new THREE.MeshStandardMaterial({color:'#c9a45c',metalness:.85,roughness:.32});
-  const leather=new THREE.MeshStandardMaterial({color:'#765132',roughness:.9,side:THREE.DoubleSide});
-  const tube=new THREE.Mesh(new THREE.CylinderGeometry(r,r,r*5.2,32),brass);
-  tube.position.x=r*1.9;attachment.add(tube);
-  for(const y of [-2.35,2.35]){
-   const rim=new THREE.Mesh(new THREE.TorusGeometry(r*1.02,r*.1,8,32),brass);
-   rim.rotation.x=Math.PI/2;rim.position.set(r*1.9,y*r,0);attachment.add(rim);
-  }
-  // Two continuous leather loops embrace both the shin and the message tube.
-  for(const y of [-1.3,1.3]){
-   const strap=new THREE.Mesh(new THREE.TorusGeometry(r*1.5,r*.17,8,40),leather);
-   strap.rotation.x=Math.PI/2;strap.scale.x=1.4;strap.position.set(r*.95,y*r,0);attachment.add(strap);
-  }
-  attachment.scale.setScalar(1.25);
-  attachment.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.userData.capsule=true}});
-  capsuleRef.current=attachment;leg.add(attachment);
-  return()=>{leg.remove(attachment);attachment.traverse(o=>o.geometry?.dispose());brass.dispose();leather.dispose()};
- },[bird]);
+  const leg=bird.getObjectByName('L_leg_077');if(!leg||!legR)return;
+  const anchor=new THREE.Object3D();anchor.position.set(legR*1.9,legR*5.24,0);leg.add(anchor);
+  anchorRef.current={anchor,leg,knee:leg.children[0]};
+  return()=>{leg.remove(anchor);anchorRef.current=null};
+ },[bird,legR]);
  useEffect(()=>{
   clock.current=0;bitten.current=false;feedCycle.current=-1;emptyTime.current=0;feedingDone.current=false;
   const interactive=phase==='waiting'||phase==='ready';
@@ -93,6 +83,12 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
    }
   }
   mixer.update(d);
+  if(anchorRef.current&&capsuleRef.current){const {anchor,leg,knee}=anchorRef.current;anchor.getWorldPosition(tmpV.current);capsuleRef.current.parent.worldToLocal(tmpV.current);capsuleRef.current.position.copy(tmpV.current);
+   // Turn the capsule's strap side toward the shin, so the loops
+   // visually wrap the leg wherever it currently points.
+   leg.getWorldPosition(tmpA.current);knee.getWorldPosition(tmpB.current);capsuleRef.current.parent.worldToLocal(tmpA.current);capsuleRef.current.parent.worldToLocal(tmpB.current);
+   const ab=tmpB.current.sub(tmpA.current),tt=THREE.MathUtils.clamp(tmpV.current.clone().sub(tmpA.current).dot(ab)/Math.max(1e-6,ab.lengthSq()),0,1),shin=tmpA.current.add(ab.multiplyScalar(tt)),dir=shin.sub(tmpV.current);dir.y=0;
+   if(dir.lengthSq()>1e-8){dir.normalize();capsuleRef.current.rotation.set(0,Math.atan2(dir.z,-dir.x),0)}}
   if(capsuleRef.current)capsuleRef.current.getWorldPosition(capsuleTarget.current);
   root.current.rotation.y=THREE.MathUtils.damp(root.current.rotation.y,phase==='ready'?.3:0,3,d);
   pose.time+=d;
@@ -108,7 +104,12 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
    pose.applied=true;
   }
   clock.current+=d;if(phase==='arrival'){const t=Math.min(clock.current/1.35,1);root.current.position.set(-5+4.65*t,1.6-1.3*t,-2+1.85*t);if(t===1)onPhase('landing')}else if(phase==='landing'){const t=Math.min(clock.current/.95,1),remaining=Math.pow(1-t,2);root.current.position.set(-.35*remaining,.3*remaining,-.15*remaining)}else root.current.position.set(0,THREE.MathUtils.damp(root.current.position.y,phase==='feeding'?.05:0,8,d),0)});
- return <group ref={root}><group scale={fit.scale} rotation-y={-.35} position={[-fit.center.x*fit.scale,-fit.min*fit.scale,-fit.center.z*fit.scale]}><primitive object={bird} onPointerOver={e=>{e.stopPropagation();onHover(e.object.userData.capsule?'capsule':'bird')}} onPointerOut={()=>onHover(null)} onClick={e=>{e.stopPropagation();if(phase==='ready'&&e.object.userData.capsule)onCapsule();else onReact(e.clientX,e.clientY)}}/>{seeds.filter(seed=>!seed.eaten).map((seed,i)=><Seed key={seed.id} point={feedingSpot.point} index={i} size={.026/fit.scale}/>)}</group></group>
+ return <group ref={root}><group scale={fit.scale} rotation-y={-.35} position={[-fit.center.x*fit.scale,-fit.min*fit.scale,-fit.center.z*fit.scale]}><primitive object={bird} onPointerOver={e=>{e.stopPropagation();onHover('bird')}} onPointerOut={()=>onHover(null)} onClick={e=>{e.stopPropagation();onReact(e.clientX,e.clientY)}}/>
+<group ref={capsuleRef} scale={1.25} onClick={e=>{e.stopPropagation();if(phase==='ready')onCapsule();else onReact(e.clientX,e.clientY)}} onPointerOver={e=>{e.stopPropagation();onHover('capsule')}} onPointerOut={()=>onHover(null)}>
+<mesh castShadow receiveShadow><cylinderGeometry args={[legR,legR,legR*5.2,28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>
+{[-2.35,2.35].map(y=><mesh key={'r'+y} position={[0,y*legR,0]} rotation-x={Math.PI/2} castShadow><torusGeometry args={[legR*1.03,legR*.11,8,28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>)}
+{[-1.3,1.3].map(y=><mesh key={'s'+y} position={[-legR*.95,y*legR,0]} rotation-x={Math.PI/2} scale-x={1.4} castShadow><torusGeometry args={[legR*1.5,legR*.17,8,36]}/><meshStandardMaterial color="#765132" roughness={.9} side={THREE.DoubleSide}/></mesh>)}
+</group>{seeds.filter(seed=>!seed.eaten).map((seed,i)=><Seed key={seed.id} point={feedingSpot.point} index={i} size={.026/fit.scale}/>)}</group></group>
 }
 function Seed({point,index,size}){
  const mesh=useRef(),age=useRef(0);
