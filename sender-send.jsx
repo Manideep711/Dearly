@@ -126,37 +126,6 @@ function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
   </group>;
 }
 
-// The capsule that rides the leg bone itself — built exactly like the
-// receiver's (pigeon-delivery.jsx), in skeleton-local units, so once it
-// is strapped on it can never detach, float, or lag behind the bird.
-function buildLegCapsule(bird) {
-  const leg = bird.getObjectByName('L_leg_077'); if (!leg) return null;
-  // Slimmer and more polished than the first version (r .14 x 3.8 long,
-  // dull brass) which read as a stubby pawn next to the desk capsule.
-  // Same builder as the receiver's, so the capsule your reader finds is
-  // the capsule you tied on.
-  const length = leg.children[0].position.length(), r = length * .105;
-  const attachment = new THREE.Group(); attachment.position.y = length * .55;
-  const brass = new THREE.MeshStandardMaterial({color: '#c9a45c', metalness: .85, roughness: .32});
-  const leather = new THREE.MeshStandardMaterial({color: '#765132', roughness: .9, side: THREE.DoubleSide});
-  const tube = new THREE.Mesh(new THREE.CylinderGeometry(r, r, r * 5.2, 32), brass);
-  tube.position.x = r * 1.9; attachment.add(tube);
-  for (const y of [-2.35, 2.35]) {
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 1.02, r * .1, 8, 32), brass);
-    rim.rotation.x = Math.PI / 2; rim.position.set(r * 1.9, y * r, 0); attachment.add(rim);
-  }
-  for (const y of [-1.3, 1.3]) {
-    const strap = new THREE.Mesh(new THREE.TorusGeometry(r * 1.5, r * .17, 8, 40), leather);
-    strap.rotation.x = Math.PI / 2; strap.scale.x = 1.4; strap.position.set(r * .95, y * r, 0); attachment.add(strap);
-  }
-  // The sender camera sits farther back than the receiver's; scale the
-  // whole attachment up so the tied capsule actually reads on screen.
-  attachment.scale.setScalar(1.75);
-  attachment.visible = false;
-  leg.add(attachment);
-  return attachment;
-}
-
 function SenderBird({phase, attached, onLanded, legTarget}) {
   const gltf = useLoader(GLTFLoader, import.meta.env.BASE_URL + 'models/pigeon.glb');
   const root = useRef(), clock = useRef(0), state = useRef('');
@@ -168,14 +137,19 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
     return {bird, mixer: new THREE.AnimationMixer(bird), clips: createPigeonClips(gltf.animations[0]), fit: {scale: 3.35 / Math.max(size.x, size.y, size.z), center, min: b.min.y}};
   }, [gltf]);
   const leg = useMemo(() => bird.getObjectByName('L_leg_077'), [bird]);
-  // Built in an effect after mount, mirroring pigeon-delivery.jsx exactly
-  // (a useMemo-built attachment never appeared on the leg in production).
-  const legCapsule = useRef(null);
+  // The tied capsule is NOT parented to the leg bone: the rig animates
+  // scale on the whole leg chain, squashing any bone-child into a
+  // bell/pawn shape (the receiver had the identical bug). An invisible
+  // anchor rides the bone instead; the scene-level capsule below is
+  // placed on the anchor's true position every frame.
+  const legR = useMemo(() => leg ? leg.children[0].position.length() * .105 : 0, [leg]);
+  const anchorRef = useRef(null), legCapsuleRef = useRef(null), tmpV = useRef(new THREE.Vector3()), tmpA = useRef(new THREE.Vector3()), tmpB = useRef(new THREE.Vector3());
   useEffect(() => {
-    const attachment = buildLegCapsule(bird);
-    legCapsule.current = attachment;
-    return () => { if (attachment && leg) leg.remove(attachment); };
-  }, [bird, leg]);
+    if (!leg || !legR) return;
+    const anchor = new THREE.Object3D(); anchor.position.set(legR * 1.9, legR * 5.24, 0); leg.add(anchor);
+    anchorRef.current = {anchor, leg, knee: leg.children[0]};
+    return () => { leg.remove(anchor); anchorRef.current = null; };
+  }, [leg, legR]);
   const previous = useRef(null);
   const play = (name, {loop = false, timeScale = 1, fade = .35} = {}) => {
     const action = mixer.clipAction(clips[name]);
@@ -210,8 +184,15 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
   useFrame((_, dt) => {
     const d = Math.min(dt, .1); // raw-ish dt: choreography keeps real-time pace
     mixer.update(d);
-    if (legCapsule.current) legCapsule.current.visible = attached;
-    if (leg) leg.getWorldPosition(legTarget.current);
+    if (anchorRef.current) anchorRef.current.anchor.getWorldPosition(legTarget.current);
+    else if (leg) leg.getWorldPosition(legTarget.current);
+    if (anchorRef.current && legCapsuleRef.current) {
+      const {anchor, leg: lg, knee} = anchorRef.current, cap = legCapsuleRef.current;
+      anchor.getWorldPosition(tmpV.current); cap.parent.worldToLocal(tmpV.current); cap.position.copy(tmpV.current);
+      lg.getWorldPosition(tmpA.current); knee.getWorldPosition(tmpB.current); cap.parent.worldToLocal(tmpA.current); cap.parent.worldToLocal(tmpB.current);
+      const ab = tmpB.current.sub(tmpA.current), tt = THREE.MathUtils.clamp(tmpV.current.clone().sub(tmpA.current).dot(ab) / Math.max(1e-6, ab.lengthSq()), 0, 1), shin = tmpA.current.add(ab.multiplyScalar(tt)), dir = shin.sub(tmpV.current); dir.y = 0;
+      if (dir.lengthSq() > 1e-8) { dir.normalize(); cap.rotation.set(0, Math.atan2(dir.z, -dir.x), 0); }
+    }
     const r = root.current; if (!r) return;
     const show = phase === 'arrival' || phase === 'attach' || phase === 'depart';
     r.visible = show;
@@ -232,7 +213,13 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
       r.position.copy(BIRD_LAND);
     }
   });
-  return <group ref={root} visible={false}><group scale={fit.scale} rotation-y={-.9} position={[-fit.center.x * fit.scale, -fit.min * fit.scale, -fit.center.z * fit.scale]}><primitive object={bird}/></group></group>;
+  return <group ref={root} visible={false}><group scale={fit.scale} rotation-y={-.9} position={[-fit.center.x * fit.scale, -fit.min * fit.scale, -fit.center.z * fit.scale]}><primitive object={bird}/>
+    <group ref={legCapsuleRef} visible={attached} scale={1.25}>
+      <mesh><cylinderGeometry args={[legR, legR, legR * 5.2, 28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>
+      {[-2.35, 2.35].map(y => <mesh key={'r' + y} position={[0, y * legR, 0]} rotation-x={Math.PI / 2}><torusGeometry args={[legR * 1.03, legR * .11, 8, 28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>)}
+      {[-1.3, 1.3].map(y => <mesh key={'s' + y} position={[-legR * .95, y * legR, 0]} rotation-x={Math.PI / 2} scale-x={1.4}><torusGeometry args={[legR * 1.5, legR * .17, 8, 36]}/><meshStandardMaterial color="#765132" roughness={.9} side={THREE.DoubleSide}/></mesh>)}
+    </group>
+  </group></group>;
 }
 
 // Per-phase framing: each beat of the sending gets its own shot — the
