@@ -41,7 +41,7 @@ function Feather({tip,dip,focused,pulse}){
 function Bottle({onDip}){
  const profile=useMemo(()=>[[.001,0],[.3,0],[.37,.05],[.395,.15],[.37,.28],[.28,.37],[.185,.44],[.16,.5],[.16,.57],[.185,.575]].map(([x,y])=>new THREE.Vector2(x,y)),[]);
  return <group position={[2.8,-3.15,.75]} scale={1.5} onClick={e=>{e.stopPropagation();onDip()}}>
-  <mesh castShadow><latheGeometry args={[profile,36]}/><meshPhysicalMaterial color="#24382c" roughness={.15} metalness={.1} clearcoat={.8} clearcoatRoughness={.25}/></mesh>
+  <mesh castShadow><latheGeometry args={[profile,36]}/><meshPhysicalMaterial color="#d9c39a" roughness={.45} metalness={0} clearcoat={.4} clearcoatRoughness={.3}/></mesh>
   <mesh position-y={.575} rotation-x={Math.PI/2}><torusGeometry args={[.172,.022,10,36]}/><meshStandardMaterial color="#9a885d" metalness={.75} roughness={.38}/></mesh>
   <mesh position-y={.545} rotation-x={-Math.PI/2}><circleGeometry args={[.125,28]}/><meshStandardMaterial color="#05070a" roughness={.12}/></mesh>
  </group>
