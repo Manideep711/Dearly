@@ -1,5 +1,5 @@
 import React,{Suspense,useMemo,useEffect,useRef,useState,useCallback} from 'react';
-import {Canvas,useLoader,useFrame} from '@react-three/fiber';
+import {Canvas,useLoader,useFrame,useThree} from '@react-three/fiber';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone} from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three';
@@ -104,7 +104,7 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
    pose.chest.scale.set(pose.chestBase.x*(1+breath),pose.chestBase.y*(1+breath*.35),pose.chestBase.z*(1+breath));
    pose.applied=true;
   }
-  clock.current+=d;if(phase==='arrival'){const t=Math.min(clock.current/1.35,1);root.current.position.set(-5+4.65*t,1.6-1.3*t,-2+1.85*t);if(t===1)onPhase('landing')}else if(phase==='landing'){const t=Math.min(clock.current/.95,1),remaining=Math.pow(1-t,2);root.current.position.set(-.35*remaining,.3*remaining,-.15*remaining)}else root.current.position.set(0,0,0)});
+  clock.current+=d;if(phase==='arrival'){const t=Math.min(clock.current/1.35,1);root.current.position.set(-5+4.65*t,1.6-1.3*t,-2+1.85*t);if(t===1)onPhase('landing')}else if(phase==='landing'){const t=Math.min(clock.current/.95,1),remaining=Math.pow(1-t,2);root.current.position.set(-.35*remaining,.3*remaining,-.15*remaining)}else root.current.position.set(0,THREE.MathUtils.damp(root.current.position.y,phase==='feeding'?.05:0,8,d),0)});
  return <group ref={root}><group scale={fit.scale} rotation-y={-.35} position={[-fit.center.x*fit.scale,-fit.min*fit.scale,-fit.center.z*fit.scale]}><primitive object={bird} onPointerOver={e=>{e.stopPropagation();onHover(e.object.userData.capsule?'capsule':'bird')}} onPointerOut={()=>onHover(null)} onClick={e=>{e.stopPropagation();if(phase==='ready'&&e.object.userData.capsule)onCapsule();else onReact(e.clientX,e.clientY)}}/>{seeds.filter(seed=>!seed.eaten).map((seed,i)=><Seed key={seed.id} point={feedingSpot.point} index={i} size={.026/fit.scale}/>)}</group></group>
 }
 function Seed({point,index,size}){
@@ -114,9 +114,13 @@ function Seed({point,index,size}){
 }
 function DeliveryCamera({phase,zoom,capsuleTarget}){
  const target=useRef(new THREE.Vector3(0,.65,0));
+ const size=useThree(s=>s.size);
  useFrame(({camera},dt)=>{
+  // Portrait phones: the fixed landscape framing cropped the bird badly.
+  // Dolly the whole shot out until it fits the narrower frame.
+  const aspect=size.width/Math.max(1,size.height),fitK=aspect>=1?1:Math.min(2.3,1.02/aspect);
   const close=phase==='ready'?zoom:0;
-  const position=new THREE.Vector3(2.6,1.65,3.6).lerp(capsuleTarget.current.clone().add(new THREE.Vector3(.65,.3,.9)),close);
+  const position=new THREE.Vector3(2.6,1.65,3.6).multiplyScalar(fitK).lerp(capsuleTarget.current.clone().add(new THREE.Vector3(.65,.3,.9).multiplyScalar(fitK)),close);
   const aim=new THREE.Vector3(0,.65,0).lerp(capsuleTarget.current,close);
   const easing=1-Math.exp(-Math.min(dt,.05)*2.4);
   camera.position.lerp(position,easing);target.current.lerp(aim,easing);camera.lookAt(target.current);
