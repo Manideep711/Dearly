@@ -139,7 +139,7 @@ function buildLegCapsule(bird) {
   }
   // The sender camera sits farther back than the receiver's; scale the
   // whole attachment up so the tied capsule actually reads on screen.
-  attachment.scale.setScalar(1.6);
+  attachment.scale.setScalar(1.75);
   attachment.visible = false;
   leg.add(attachment);
   return attachment;
@@ -153,7 +153,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
     bird.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; if (o.name === 'poopMesh_Pigeon_mainMat_0') o.visible = false; const mats = Array.isArray(o.material) ? o.material : [o.material]; o.material = mats.map(m => { const c = m.clone(); if (c.name === 'Pigeon_mainMat') { c.transparent = false; c.alphaTest = .45; c.depthWrite = true; c.side = THREE.DoubleSide; } return c; }); if (!Array.isArray(gltf.scene.getObjectByName(o.name)?.material)) o.material = o.material[0]; } });
     bird.updateMatrixWorld(true);
     const b = new THREE.Box3().setFromObject(bird), size = b.getSize(new THREE.Vector3()), center = b.getCenter(new THREE.Vector3());
-    return {bird, mixer: new THREE.AnimationMixer(bird), clips: createPigeonClips(gltf.animations[0]), fit: {scale: 3.05 / Math.max(size.x, size.y, size.z), center, min: b.min.y}};
+    return {bird, mixer: new THREE.AnimationMixer(bird), clips: createPigeonClips(gltf.animations[0]), fit: {scale: 3.35 / Math.max(size.x, size.y, size.z), center, min: b.min.y}};
   }, [gltf]);
   const leg = useMemo(() => bird.getObjectByName('L_leg_077'), [bird]);
   // Built in an effect after mount, mirroring pigeon-delivery.jsx exactly
@@ -223,18 +223,24 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
   return <group ref={root} visible={false}><group scale={fit.scale} rotation-y={-.9} position={[-fit.center.x * fit.scale, -fit.min * fit.scale, -fit.center.z * fit.scale]}><primitive object={bird}/></group></group>;
 }
 
-// The stage was blocked for a landscape frame (bird lands at x=2.35, the
-// sheet spans to x=-3.87). On a portrait phone that framing pushed the
-// bird clean off-screen. Pull the camera back until the whole stage
-// fits the width; landscape keeps the original distance.
-function FitCamera() {
+// Per-phase framing: each beat of the sending gets its own shot — the
+// letter centred while it is held and rolled, scroll and capsule
+// together for the sealing, the landing spot for the messenger. The
+// camera drifts between shots, and on portrait screens it pulls back
+// until the shot fits the width (the first framing was landscape-only
+// and pushed the landed pigeon clean off a phone screen).
+const PHASE_CAM = {hold: [-1.55, 2.55, 8.6], roll: [-1.55, 2.55, 8.6], capsule: [-.85, 2.35, 7.2], arrival: [1.05, 2.3, 7.2], attach: [1.05, 2.3, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
+function PhaseCamera({phase}) {
   const camera = useThree(s => s.camera), size = useThree(s => s.size);
-  useEffect(() => {
+  useFrame((_, dt) => {
+    const [tx, halfW, minZ] = PHASE_CAM[phase] || PHASE_CAM.hold;
     const aspect = size.width / Math.max(1, size.height);
-    const fitZ = 4.15 / (Math.tan(THREE.MathUtils.degToRad(21)) * aspect);
-    camera.position.set(.25, .4, Math.max(10.4, fitZ));
-    camera.updateProjectionMatrix();
-  }, [camera, size]);
+    const tz = Math.max(minZ, halfW / (Math.tan(THREE.MathUtils.degToRad(21)) * aspect));
+    const d = Math.min(dt, .05);
+    camera.position.x = THREE.MathUtils.damp(camera.position.x, tx, 3, d);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, tz, 3, d);
+    camera.position.y = .4;
+  });
   return null;
 }
 
@@ -242,6 +248,7 @@ function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, le
   const tex = useLetterTexture(letter, undefined, true);
   const surface = useSurface();
   return <>
+    <PhaseCamera phase={phase}/>
     <color attach="background" args={['#191a17']}/>
     <ambientLight intensity={1.15}/>
     <hemisphereLight args={['#e7e5de', '#4b3b30', 1.5]}/>
@@ -297,7 +304,6 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
     onTouchStart={e => { touchY.current = e.touches[0].clientY; }}
     onTouchEnd={e => { if (touchY.current !== null && touchY.current - e.changedTouches[0].clientY > 48) gestureRoll(); touchY.current = null; }}>
     <Canvas shadows dpr={[1, 2]} camera={{position: [0, .4, 10.4], fov: 42}} gl={{antialias: true}}>
-      <FitCamera/>
       <Suspense fallback={null}><SendScene letter={letter} phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} onLanded={() => setPhase('attach')} legTarget={legTarget}/></Suspense>
     </Canvas>
     <div className="vignette"/>
