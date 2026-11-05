@@ -31,25 +31,33 @@ const BIRD_LAND = new THREE.Vector3(2.35, 0, -.35);
 const CAP_OPEN = new THREE.Vector3(-.25, -.6, .15);    // cap rests on the desk, below the mouth
 const CAP_SHUT = new THREE.Vector3(-.66, 0, 0);        // cap clicked onto the entry (left) end
 
-function RollingLetter({texture, phase, sealing, sealT0}) {
+function RollingLetter({texture, phase, sealing, sealT0, manualRoll, onRolled}) {
   const geo = useMemo(() => new THREE.PlaneGeometry(4.65, 6.06, 48, 120), []);
   const group = useRef();
   const rollT0 = useRef(0);
   const lastRoll = useRef(-1);
+  const rolledCalled = useRef(false);
   useEffect(() => () => geo.dispose(), [geo]);
-  useEffect(() => { if (phase === 'roll') rollT0.current = performance.now(); }, [phase]);
-  useFrame(() => {
+  useEffect(() => { if (phase === 'roll') { rollT0.current = performance.now(); rolledCalled.current = false; } }, [phase]);
+  useFrame((_, dt) => {
     const g = group.current; if (!g) return;
     const inScene = !(phase === 'arrival' || phase === 'attach' || phase === 'depart' || phase === 'sent');
     g.visible = inScene;
     if (!inScene) return;
-    // Roll progress from the wall clock; keep rolling into the capsule
-    // phase if a slow frame stole time, so the scroll always completes.
+    // Roll progress: when the sender takes hold of it, their own scroll
+    // winds the paper (the receiver's manual unroll, run backwards);
+    // otherwise the wall clock runs it, as before.
     let roll = lastRoll.current < 0 ? 0 : lastRoll.current;
     if (phase === 'roll' && !rollT0.current) rollT0.current = performance.now();
-    if (phase === 'roll' || (phase === 'capsule' && roll < 1)) {
-      roll = clamp01((performance.now() - rollT0.current) / T(2100));
-    }
+    const manual = manualRoll.current.active;
+    let rollTarget = 0;
+    if (phase === 'roll' && manual) rollTarget = manualRoll.current.value;
+    else if (phase === 'roll') rollTarget = clamp01((performance.now() - rollT0.current) / T(2100));
+    else if (phase !== 'hold') rollTarget = 1;
+    roll = THREE.MathUtils.damp(roll, rollTarget, 12, Math.min(dt, .05));
+    if (Math.abs(roll - rollTarget) < .001) roll = rollTarget;
+    manualRoll.current.visual = roll;
+    if (phase === 'roll' && manual && rollTarget >= 1 && roll > .98 && !rolledCalled.current) { rolledCalled.current = true; onRolled(); }
     if (Math.abs(roll - lastRoll.current) > .0004) {
       lastRoll.current = roll;
       const u = 1 - roll; // reuse the receiver's unroll maths, reversed
@@ -244,7 +252,7 @@ function PhaseCamera({phase}) {
   return null;
 }
 
-function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, legTarget}) {
+function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, legTarget, manualRoll, onRolled}) {
   const tex = useLetterTexture(letter, undefined, true);
   const surface = useSurface();
   return <>
@@ -255,14 +263,14 @@ function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, le
     <directionalLight position={[-3, 5, 7]} intensity={2.1} color="#ffecd0"/>
     <pointLight position={[5, -2, 4]} intensity={12} color="#b7c6ce"/>
     <mesh position={[0, 0, -.6]}><planeGeometry args={[200, 200]}/><meshStandardMaterial color="#36342f" roughness={1} bumpMap={surface} bumpScale={.035}/></mesh>
-    <RollingLetter texture={tex} phase={phase} sealing={sealing} sealT0={sealT0}/>
+    <RollingLetter texture={tex} phase={phase} sealing={sealing} sealT0={sealT0} manualRoll={manualRoll} onRolled={onRolled}/>
     <CapsuleRig phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} legTarget={legTarget}/>
     <SenderBird phase={phase} attached={attached} onLanded={onLanded} legTarget={legTarget}/>
   </>;
 }
 
 const CAPTIONS = {
-  hold: ['Hold it a moment longer.', 'Scroll, swipe up, or tap the button to roll it up for the journey.'],
+  hold: ['Hold it a moment longer.', 'Scroll or drag — the paper winds up under your own hand.'],
   roll: ['Roll it up, tight and true.', 'Every word you wrote, curled safe inside.'],
   capsule: ['Into the brass capsule.', 'The same capsule your reader will find on her leg.'],
   arrival: ['A little messenger. A long way home.', 'She has come for your words.'],
@@ -284,7 +292,9 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
   const timers = useRef([]);
   const later = (fn, ms) => { const id = setTimeout(fn, T(ms)); timers.current.push(id); };
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
-  useEffect(() => { if (phase === 'roll') later(() => setPhase('capsule'), 2400); }, [phase]);
+  const manualRoll = useRef({active: false, value: 0, visual: 0});
+  const [manualActive, setManualActive] = useState(false);
+  useEffect(() => { if (phase === 'roll') later(() => { if (!manualRoll.current.active) setPhase('capsule'); }, 2400); }, [phase]);
   useEffect(() => { if (phase === 'depart') later(() => setPhase('sent'), 3600); }, [phase]);
 
   const seal = () => { sealT0.current = performance.now(); setSealing(true); later(() => setPhase('arrival'), 1700); };
@@ -295,16 +305,25 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
     catch { setNotice(url); }
   }
   const step = STEP_OF[phase];
-  // Scroll-to-roll: the receiver scrolls to unroll, so the sender scrolls
-  // to roll — same gesture, run backwards. The button stays for everyone else.
+  // Manual scroll-to-roll: the receiver unrolls by hand, so the sender
+  // rolls by hand — scrolling winds (or unwinds) the paper directly.
+  // The button still runs the whole roll on its own.
   const touchY = useRef(null);
-  const gestureRoll = () => { if (phase === 'hold') setPhase('roll'); };
+  const driveRoll = delta => {
+    if (phase !== 'hold' && phase !== 'roll') return;
+    if (!manualRoll.current.active) { manualRoll.current.active = true; manualRoll.current.value = manualRoll.current.visual || 0; setManualActive(true); }
+    manualRoll.current.value = clamp01(manualRoll.current.value + delta);
+    if (phase === 'hold') setPhase('roll');
+  };
+  const handleRolled = () => { manualRoll.current.active = false; setManualActive(false); setPhase('capsule'); };
+  const finishRoll = () => { manualRoll.current.active = false; setManualActive(false); later(() => setPhase('capsule'), 700); };
   return <div className="experience send-experience"
-    onWheel={e => { if (e.deltaY > 24) gestureRoll(); }}
+    onWheel={e => driveRoll(e.deltaY / 600)}
     onTouchStart={e => { touchY.current = e.touches[0].clientY; }}
-    onTouchEnd={e => { if (touchY.current !== null && touchY.current - e.changedTouches[0].clientY > 48) gestureRoll(); touchY.current = null; }}>
+    onTouchMove={e => { if (touchY.current === null) return; driveRoll((touchY.current - e.touches[0].clientY) / 260); touchY.current = e.touches[0].clientY; }}
+    onTouchEnd={() => { touchY.current = null; }}>
     <Canvas shadows dpr={[1, 2]} camera={{position: [0, .4, 10.4], fov: 42}} gl={{antialias: true}}>
-      <Suspense fallback={null}><SendScene letter={letter} phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} onLanded={() => setPhase('attach')} legTarget={legTarget}/></Suspense>
+      <Suspense fallback={null}><SendScene letter={letter} phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} onLanded={() => setPhase('attach')} legTarget={legTarget} manualRoll={manualRoll} onRolled={handleRolled}/></Suspense>
     </Canvas>
     <div className="vignette"/>
     <header><span className="brand">dearly<span>LETTERS, FELT.</span></span><button onClick={onBack}>← Back to the desk</button></header>
@@ -313,7 +332,7 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
       <div className="progress">{['The rolling', 'The capsule', 'The messenger', 'The departure'].map((x, i) => <span key={x} className={step === i ? 'active' : ''}><b>0{i + 1}</b>{x}</span>)}</div>
       <div className="controls">
         {phase === 'hold' && <button className="primary" onClick={() => setPhase('roll')}>Roll up your letter <span>↗</span></button>}
-        {phase === 'roll' && <button className="primary" disabled>Rolling…</button>}
+        {phase === 'roll' && (manualActive ? <button className="primary" onClick={finishRoll}>Finish rolling <span>↗</span></button> : <button className="primary" disabled>Rolling…</button>)}
         {phase === 'capsule' && <button className="primary" disabled={sealing} onClick={seal}>{sealing ? 'Sealing…' : 'Slide it into the capsule'} <span>↗</span></button>}
         {phase === 'arrival' && <button className="primary" disabled>She is arriving…</button>}
         {phase === 'attach' && !canSend && <button className="primary" disabled={tied} onClick={tie}>{tied ? 'Tying…' : 'Tie it to her leg'} <span>↗</span></button>}
