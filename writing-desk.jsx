@@ -1,6 +1,7 @@
 import React,{Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {Canvas,useFrame,useThree} from '@react-three/fiber';
 import * as THREE from 'three';
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {useLetterTexture} from './letter-render';
 import {layoutLetter,PAGE,faceFont} from './letter-layout';
 import TypewriterDesk from './typewriter';
@@ -28,6 +29,12 @@ export function quadTransform(w,h,pts){
 }
 export function useWood(){return useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=1024;const x=c.getContext('2d');x.fillStyle='#231e18';x.fillRect(0,0,1024,1024);let seed=12;const rand=()=>{seed=seed*16807%2147483647;return seed/2147483647};for(let i=0;i<5500;i++){const y=rand()*1024;x.strokeStyle=`rgba(${rand()>.5?'100,76,49':'8,5,3'},${rand()*.035})`;x.lineWidth=.3+rand()*2;x.beginPath();x.moveTo(0,y);for(let a=0;a<=1024;a+=30)x.lineTo(a,y+Math.sin(a*.013+y)*3+Math.sin(a*.004)*8);x.stroke()}for(let y=0;y<1024;y+=256){x.fillStyle='#080604';x.fillRect(0,y,1024,2)}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.colorSpace=THREE.SRGBColorSpace;return t},[])}
 const RESTV=new THREE.Vector3(1.65,-3.08,1.55);
+// The desk scene needs an environment map or its metals lie: a
+// metalness-.95 nib with nothing to reflect renders as a black blob
+// (the sender and receiver scenes carry the same PMREM for this
+// reason). Kept faint so the candlelit mood does not lift.
+function DeskEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
+ useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.35;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
 function Pen({tip,focused,pulse}){
  const group=useRef();
  // A fountain pen with a steel nib, built around its tip: the nib is a
@@ -38,7 +45,7 @@ function Pen({tip,focused,pulse}){
  // did, with the same little bob on each keystroke.
  const nib=useMemo(()=>{
   const s=new THREE.Shape();
-  s.moveTo(0,0);s.quadraticCurveTo(.13,.06,.15,.20);s.quadraticCurveTo(.155,.36,.098,.50);s.lineTo(-.098,.50);s.quadraticCurveTo(-.155,.36,-.15,.20);s.quadraticCurveTo(-.13,.06,0,0);
+  s.moveTo(0,0);s.quadraticCurveTo(.108,.06,.128,.20);s.quadraticCurveTo(.132,.36,.082,.50);s.lineTo(-.082,.50);s.quadraticCurveTo(-.132,.36,-.128,.20);s.quadraticCurveTo(-.108,.06,0,0);
   const slit=new THREE.Path();slit.moveTo(-.006,.015);slit.lineTo(.006,.015);slit.lineTo(.004,.30);slit.lineTo(-.004,.30);slit.closePath();s.holes.push(slit);
   const hole=new THREE.Path();hole.absarc(0,.325,.016,0,Math.PI*2,true);s.holes.push(hole);
   return new THREE.ExtrudeGeometry(s,{depth:.014,bevelEnabled:true,bevelThickness:.004,bevelSize:.004,bevelSegments:1,curveSegments:12})},[]);
@@ -52,11 +59,11 @@ function Pen({tip,focused,pulse}){
   // away from the line just written, so it never blankets the words.
   // (The old pose tipped it 64° toward the camera and 35° sideways: a
   // near-black bar lying across the text, unreadable as a pen.)
-  g.rotation.z=THREE.MathUtils.damp(g.rotation.z,focused?-.26:-1.52,8,dt);
+  g.rotation.z=THREE.MathUtils.damp(g.rotation.z,focused?-.34:-1.52,8,dt);
   g.rotation.x=THREE.MathUtils.damp(g.rotation.x,focused?.46:.1,8,dt)});
  return <group ref={group} scale={.38} position={[1.65,-3.08,1.55]} rotation={[.1,0,-1.52]}>
-  <mesh geometry={nib} position-z={-.007} castShadow><meshStandardMaterial color="#dde1e6" metalness={.95} roughness={.2}/></mesh>
-  <mesh position={[0,.32,-.028]} castShadow><boxGeometry args={[.11,.34,.02]}/><meshStandardMaterial color="#17120e" roughness={.6}/></mesh>
+  <mesh geometry={nib} position-z={-.007} castShadow><meshStandardMaterial color="#dde1e6" metalness={.95} roughness={.2} envMapIntensity={1.3}/></mesh>
+  <mesh position={[0,.32,-.034]} castShadow><boxGeometry args={[.085,.34,.02]}/><meshStandardMaterial color="#17120e" roughness={.6}/></mesh>
   <mesh position-y={.64} castShadow><cylinderGeometry args={[.058,.07,.30,14]}/><meshStandardMaterial color="#2e1c10" roughness={.38}/></mesh>
   <mesh position-y={1.44} castShadow><cylinderGeometry args={[.05,.07,1.3,16]}/><meshPhysicalMaterial color="#46241a" roughness={.26} clearcoat={.65} clearcoatRoughness={.25}/></mesh>
   <mesh position-y={2.02} rotation-x={Math.PI/2}><torusGeometry args={[.058,.011,8,20]}/><meshStandardMaterial color="#9a885d" metalness={.8} roughness={.35}/></mesh>
@@ -184,7 +191,7 @@ function DeskScene({letter,onMetrics,onBounds,onFocus,caret,focused,pulse,mode,l
   // the paper while it moves.
   if((settled&&key!==lastKey.current)||camera.position.distanceTo(lastRep.current)>.3){if(settled)lastKey.current=key;lastRep.current.copy(camera.position);const sl=slope.current;if(sl){sl.updateMatrixWorld(true);onBounds({corners:[[-PW/2,PH/2],[PW/2,PH/2],[PW/2,-PH/2],[-PW/2,-PH/2]].map(([x,y])=>{const q=sl.localToWorld(new THREE.Vector3(x,y,0)).project(camera);return [(q.x+1)*size.width/2,(1-q.y)*size.height/2]})})}}});
  useEffect(()=>()=>{geometry.dispose();wood.dispose()},[geometry,wood]);
- return <><color attach="background" args={[mode==='lamp'?'#e9dfc9':'#0d0b08']}/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><directionalLight position={mode==='lamp'?[-4,3,5]:[-5,1.5,5]} intensity={mode==='lamp'?.55:1.15} color="#ffb066" castShadow shadow-mapSize={[512,512]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} roughness={.94} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle}/>:<Candle/>}<Pen tip={tip} focused={focused} pulse={pulse}/></>
+ return <><color attach="background" args={[mode==='lamp'?'#e9dfc9':'#0d0b08']}/><DeskEnv/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><directionalLight position={mode==='lamp'?[-4,3,5]:[-5,1.5,5]} intensity={mode==='lamp'?.55:1.15} color="#ffb066" castShadow shadow-mapSize={[512,512]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} roughness={.94} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle}/>:<Candle/>}<Pen tip={tip} focused={focused} pulse={pulse}/></>
 }
 // The choice of desk, shown high in both rooms so it is the first thing a
 // writer meets - the old switch sat at the end of the actions row, below
