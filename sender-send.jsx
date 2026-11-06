@@ -113,7 +113,7 @@ function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
   const group = useRef(), cap = useRef();
   useFrame(() => {
     const g = group.current; if (!g) return;
-    const show = (phase === 'capsule' || phase === 'arrival' || phase === 'attach') && !attached;
+    const show = (phase === 'stamp' || phase === 'capsule' || phase === 'arrival' || phase === 'attach') && !attached;
     g.visible = show;
     if (!show) return;
     if (tied && legTarget.current) {
@@ -130,7 +130,7 @@ function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
       if (sealing) {
         const p = smooth(((performance.now() - sealT0.current) / T(1500) - .45) / .55);
         target = CAP_OPEN.clone().lerp(CAP_SHUT, p);
-      } else if (phase !== 'capsule') target = CAP_SHUT;
+      } else if (phase !== 'capsule' && phase !== 'stamp') target = CAP_SHUT;
       cap.current.position.lerp(target, 1 - Math.exp(-.016 * 9));
       if (cap.current.position.distanceTo(target) < .004) cap.current.position.copy(target);
     }
@@ -261,7 +261,12 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
 // camera drifts between shots, and on portrait screens it pulls back
 // until the shot fits the width (the first framing was landscape-only
 // and pushed the landed pigeon clean off a phone screen).
-const PHASE_CAM = {hold: [-1.55, 2.55, 8.6], roll: [-1.55, 2.55, 8.6], stamp: [-.4, 1.55, 7.2], capsule: [.14, 1.5, 7.2], arrival: [1.05, 2.3, 7.2], attach: [2.05, 1.45, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
+const PHASE_CAM = {hold: [-1.55, 2.55, 8.6], roll: [-1.55, 2.55, 8.6], stamp: [-.25, 1.75, 7.2], capsule: [.14, 1.5, 7.2], arrival: [1.05, 2.3, 7.2], attach: [2.05, 1.45, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
+// Most shots sit at the stage's eye line (.4); the stamp beat plays
+// lower (scroll, capsule and stamp all rest below y -1), so its camera
+// dips to centre them instead of leaving the action in the bottom
+// third under a void.
+const PHASE_CAM_Y = {stamp: -.5};
 function PhaseCamera({phase}) {
   const camera = useThree(s => s.camera), size = useThree(s => s.size);
   useFrame((_, dt) => {
@@ -271,7 +276,7 @@ function PhaseCamera({phase}) {
     const d = Math.min(dt, .05);
     camera.position.x = THREE.MathUtils.damp(camera.position.x, tx, 3, d);
     camera.position.z = THREE.MathUtils.damp(camera.position.z, tz, 3, d);
-    camera.position.y = .4;
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, PHASE_CAM_Y[phase] ?? .4, 3, d);
   });
   return null;
 }
@@ -298,7 +303,7 @@ function StampRig({phase, configRef, onCommit}) {
   const stamp = useRef(), wax = useRef();
   const press = useRef(null), hoverAt = useRef(null);
   const settle = useRef(0), settleAt = useRef(null), parkAt = useRef(null);
-  const rest = useMemo(() => new THREE.Vector3(.2, -2.35, .95), []);
+  const rest = useMemo(() => new THREE.Vector3(1.15, -1.75, .4), []);
   const waxGeo = useMemo(() => {
     let s = 421; const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
     const shape = new THREE.Shape(), n = 28, ph = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
@@ -374,7 +379,7 @@ function StampRig({phase, configRef, onCommit}) {
     <mesh ref={wax} geometry={waxGeo} visible={false}>
       <meshPhysicalMaterial color="#711627" roughness={.28} clearcoat={1} clearcoatRoughness={.25}/>
     </mesh>
-    <group ref={stamp} position={rest.toArray()} visible={false}>
+    <group ref={stamp} position={rest.toArray()} visible={false} scale={.62}>
       <group rotation-x={Math.PI / 2}>
         <mesh position-y={.035} castShadow><cylinderGeometry args={[.34, .35, .07, 36]}/><meshStandardMaterial color="#b08d57" metalness={.8} roughness={.35}/></mesh>
         <mesh position-y={.1} castShadow><cylinderGeometry args={[.13, .17, .06, 24]}/><meshStandardMaterial color="#8a6f3e" metalness={.8} roughness={.4}/></mesh>
