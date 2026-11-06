@@ -2,6 +2,8 @@ import React,{Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'reac
 import {Canvas,useFrame,useThree} from '@react-three/fiber';
 import * as THREE from 'three';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {PEN_GLB_B64} from './pen-model';
 import {useLetterTexture} from './letter-render';
 import {layoutLetter,PAGE,faceFont} from './letter-layout';
 import TypewriterDesk from './typewriter';
@@ -35,24 +37,28 @@ const RESTV=new THREE.Vector3(1.65,-3.08,1.55);
 // reason). Kept faint so the candlelit mood does not lift.
 function DeskEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
  useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.35;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
+let penScenePromise=null;
+function loadPenScene(){
+ if(!penScenePromise){
+  const bin=atob(PEN_GLB_B64);const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([bytes],{type:'model/gltf-binary'}));
+  penScenePromise=new GLTFLoader().loadAsync(url).then(g=>{
+   g.scene.traverse(o=>{if(o.isMesh)o.castShadow=true});return g.scene});
+ }
+ return penScenePromise;
+}
 function Pen({tip,focused,pulse}){
  const group=useRef();
- // An oversized fountain pen, built around its tip, with the presence
- // to read as a pen at the desk's framing: a broad steel nib (stamped
- // outline, slit and breather hole as real holes), a dark feed, a
- // tapered section, a thick glossy ebonite barrel and a brass band at
- // the joint. It carries its own ink — no inkwell, no dipping — and
- // rides the caret with a little bob on each keystroke. The writing
- // pose is a held pen's: nib on the point, barrel up toward the writer
- // at a clear slant, leaning right, away from the line just written,
- // so it never blankets the words.
- const nib=useMemo(()=>{
-  const s=new THREE.Shape();
-  s.moveTo(0,0);s.quadraticCurveTo(.088,.06,.115,.21);s.quadraticCurveTo(.12,.38,.07,.52);s.lineTo(-.07,.52);s.quadraticCurveTo(-.12,.38,-.115,.21);s.quadraticCurveTo(-.088,.06,0,0);
-  const slit=new THREE.Path();slit.moveTo(-.007,.015);slit.lineTo(.007,.015);slit.lineTo(.005,.32);slit.lineTo(-.005,.32);slit.closePath();s.holes.push(slit);
-  const hole=new THREE.Path();hole.absarc(0,.35,.018,0,Math.PI*2,true);s.holes.push(hole);
-  return new THREE.ExtrudeGeometry(s,{depth:.016,bevelEnabled:true,bevelThickness:.005,bevelSize:.005,bevelSegments:1,curveSegments:12})},[]);
- useEffect(()=>()=>{nib.dispose()},[nib]);
+ // Karosio's antique dip pen, a real model in place of the procedural
+ // ones that never read as a pen on a phone: slim dark wooden handle,
+ // a proper pointed steel nib and a pale feather vane, baked with its
+ // tip at the group origin and its shaft along +Y. It rides the caret
+ // with a little bob on each keystroke; the writing pose is a held
+ // pen's — nib on the point, shaft up toward the writer at a clear
+ // slant, leaning right, away from the line just written.
+ const [scene,setScene]=useState(null);
+ useEffect(()=>{let live=true;loadPenScene().then(s=>{if(live)setScene(s)});return()=>{live=false}},[]);
  useFrame((_,dt)=>{const g=group.current;if(!g)return;
   const goal=focused?tip.current:RESTV;
   g.position.lerp(goal,1-Math.exp(-dt*(focused?26:5)));
@@ -60,12 +66,7 @@ function Pen({tip,focused,pulse}){
   g.rotation.z=THREE.MathUtils.damp(g.rotation.z,focused?-.42:-1.52,8,dt);
   g.rotation.x=THREE.MathUtils.damp(g.rotation.x,focused?.55:.1,8,dt)});
  return <group ref={group} scale={.5} position={[1.65,-3.08,1.55]} rotation={[.1,0,-1.52]}>
-  <mesh geometry={nib} position-z={-.008} castShadow><meshStandardMaterial color="#dde1e6" metalness={.95} roughness={.2} envMapIntensity={1.3}/></mesh>
-  <mesh position={[0,.36,-.038]} castShadow><boxGeometry args={[.13,.38,.024]}/><meshStandardMaterial color="#17120e" roughness={.6}/></mesh>
-  <mesh position-y={.69} castShadow><cylinderGeometry args={[.075,.095,.34,16]}/><meshStandardMaterial color="#2e1c10" roughness={.38}/></mesh>
-  <mesh position-y={.88} rotation-x={Math.PI/2}><torusGeometry args={[.098,.015,10,24]}/><meshStandardMaterial color="#9a885d" metalness={.85} roughness={.3} envMapIntensity={1.2}/></mesh>
-  <mesh position-y={1.48} castShadow><cylinderGeometry args={[.088,.10,1.25,18]}/><meshPhysicalMaterial color="#46241a" roughness={.18} clearcoat={1} clearcoatRoughness={.18}/></mesh>
-  <mesh position-y={2.12} scale={[1,.45,1]}><sphereGeometry args={[.088,16,12]}/><meshPhysicalMaterial color="#46241a" roughness={.18} clearcoat={1} clearcoatRoughness={.18}/></mesh>
+  {scene&&<primitive object={scene}/>}
  </group>
 }
 export function Candle(){
@@ -285,7 +286,7 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  
  </div><section className="atelier-controls">{lightMode==='lamp'&&<div className="atelier-spacing"><label>Lamp angle <input type="range" aria-label="Lamp angle" min="-32" max="40" step="1" value={lampAngle} onChange={e=>setLampAngle(Number(e.target.value))}/></label><span>tip: you can also drag the lamp head itself</span></div>}<div className="atelier-spacing"><label>Letter size <input type="range" aria-label="Letter size" min="32" max="88" step="2" value={letter.fontSize||72} onChange={e=>onChange({...letter,fontSize:Number(e.target.value)})}/></label><label>Line spacing <input type="range" aria-label="Line spacing" min="1.28" max="1.8" step=".05" value={letter.lineSpacing||1.35} onChange={e=>onChange({...letter,lineSpacing:Number(e.target.value)})}/></label><span>{metrics?.fill||0}% of the page</span></div>
  {metrics?.overflow&&<p role="status" className="atelier-overflow">Your words extend beyond this sheet. <button onClick={fit}>Fit to the page</button></p>}
- <div className="atelier-actions"><button onClick={()=>setSigning(v=>!v)}>Sign by hand</button><button onClick={()=>setPlain(v=>!v)}>Edit text</button><button onClick={toggleSound} aria-pressed={soundOn}>{soundOn?'Sound on':'Sound off'}</button><button onClick={toggleLight} aria-pressed={lightMode==='lamp'}>{lightMode==='lamp'?'Lamplight':'Candlelight'}</button><button className="primary" disabled={!letter.body.trim()||metrics?.overflow} onClick={onPreview}>Hold your letter ↗</button></div><p className="atelier-hint">Click the paper to write. Your layout carries through to the finished letter.</p>
+ <div className="atelier-actions"><button onClick={()=>setSigning(v=>!v)}>Sign by hand</button><button onClick={()=>setPlain(v=>!v)}>Edit text</button><button onClick={toggleSound} aria-pressed={soundOn}>{soundOn?'Sound on':'Sound off'}</button><button onClick={toggleLight} aria-pressed={lightMode==='lamp'}>{lightMode==='lamp'?'Lamplight':'Candlelight'}</button><button className="primary" disabled={!letter.body.trim()||metrics?.overflow} onClick={onPreview}>Hold your letter ↗</button></div><p className="atelier-hint">Click the paper to write. Your layout carries through to the finished letter.</p><p className="pen-credit">Pen based on <a href="https://sketchfab.com/3d-models/book-inkwell-and-fountain-pen-519506e44002488dbba8b78e7b9d3ac6" target="_blank" rel="noreferrer">“Book, inkwell and fountain pen”</a> by <a href="https://sketchfab.com/Karosio" target="_blank" rel="noreferrer">Karosio</a> · <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0</a></p>
  </section>{plain&&<section className="atelier-editor"><label>Your words<textarea aria-label="Plain text editor" value={letter.body} maxLength={1500} onChange={e=>{prevBody.current=e.target.value;onChange({...letter,body:e.target.value})}}/></label><button onClick={()=>setPlain(false)}>Return to the desk</button></section>}
  {signing&&<section className="signature-panel"><p>A signature only you could make.</p><svg className="signature-pad" aria-label="Draw your signature" role="img" viewBox="0 0 480 130" onPointerDown={start} onPointerMove={move} onPointerUp={()=>{pen.current=false;onChange({...letter,signature:signatureDraft.current});setSignaturePreview(null)}} onPointerCancel={()=>{pen.current=false;setSignaturePreview(null)}}>{(signaturePreview||letter.signature||[]).map((s,i)=><path key={i} d={s.map((p,j)=>`${j?'L':'M'}${p[0]} ${p[1]}`).join(' ')} stroke="#39352e" strokeWidth="1.5" fill="none" strokeLinecap="round"/>)}</svg><button onClick={()=>onChange({...letter,signature:[]})}>Clear signature</button><button onClick={()=>setSigning(false)}>Keep signature</button></section>}
  </main>

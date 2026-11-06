@@ -155,3 +155,4 @@ html,body{overflow-x:clip}
 /* Nothing on the paper itself ever wears a focus outline — the theme's
    green ring is for the shop chrome's real controls only. */
 .paper-fields :is(input,textarea):focus-visible{outline:none!important;outline-offset:0}
+.pen-credit{text-align:center;font:8px Inter,sans-serif;opacity:.45;margin-top:10px}.pen-credit a{color:inherit}
