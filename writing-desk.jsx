@@ -38,7 +38,7 @@ function Pen({tip,focused,pulse}){
  // did, with the same little bob on each keystroke.
  const nib=useMemo(()=>{
   const s=new THREE.Shape();
-  s.moveTo(0,0);s.quadraticCurveTo(.10,.06,.115,.20);s.quadraticCurveTo(.12,.36,.075,.50);s.lineTo(-.075,.50);s.quadraticCurveTo(-.12,.36,-.115,.20);s.quadraticCurveTo(-.10,.06,0,0);
+  s.moveTo(0,0);s.quadraticCurveTo(.13,.06,.15,.20);s.quadraticCurveTo(.155,.36,.098,.50);s.lineTo(-.098,.50);s.quadraticCurveTo(-.155,.36,-.15,.20);s.quadraticCurveTo(-.13,.06,0,0);
   const slit=new THREE.Path();slit.moveTo(-.006,.015);slit.lineTo(.006,.015);slit.lineTo(.004,.30);slit.lineTo(-.004,.30);slit.closePath();s.holes.push(slit);
   const hole=new THREE.Path();hole.absarc(0,.325,.016,0,Math.PI*2,true);s.holes.push(hole);
   return new THREE.ExtrudeGeometry(s,{depth:.014,bevelEnabled:true,bevelThickness:.004,bevelSize:.004,bevelSegments:1,curveSegments:12})},[]);
@@ -47,15 +47,20 @@ function Pen({tip,focused,pulse}){
   const goal=focused?tip.current:RESTV;
   g.position.lerp(goal,1-Math.exp(-dt*(focused?26:5)));
   if(focused){const age=performance.now()-pulse.current;if(age<230){const b=Math.sin(age/230*Math.PI);g.position.y-=b*.04}}
-  g.rotation.z=THREE.MathUtils.damp(g.rotation.z,focused?-.62:-1.52,8,dt);
-  g.rotation.x=THREE.MathUtils.damp(g.rotation.x,focused?1.12:.1,8,dt)});
- return <group ref={group} scale={.44} position={[1.65,-3.08,1.55]} rotation={[.1,0,-1.52]}>
-  <mesh geometry={nib} position-z={-.007} castShadow><meshStandardMaterial color="#c9ccd1" metalness={.92} roughness={.28}/></mesh>
+  // Writing pose: the pen stands at the caret like a held pen — nib on
+  // the point, barrel rising up toward the writer and leaning RIGHT,
+  // away from the line just written, so it never blankets the words.
+  // (The old pose tipped it 64° toward the camera and 35° sideways: a
+  // near-black bar lying across the text, unreadable as a pen.)
+  g.rotation.z=THREE.MathUtils.damp(g.rotation.z,focused?-.26:-1.52,8,dt);
+  g.rotation.x=THREE.MathUtils.damp(g.rotation.x,focused?.46:.1,8,dt)});
+ return <group ref={group} scale={.38} position={[1.65,-3.08,1.55]} rotation={[.1,0,-1.52]}>
+  <mesh geometry={nib} position-z={-.007} castShadow><meshStandardMaterial color="#dde1e6" metalness={.95} roughness={.2}/></mesh>
   <mesh position={[0,.32,-.028]} castShadow><boxGeometry args={[.11,.34,.02]}/><meshStandardMaterial color="#17120e" roughness={.6}/></mesh>
-  <mesh position-y={.64} castShadow><cylinderGeometry args={[.058,.07,.30,14]}/><meshStandardMaterial color="#241a12" roughness={.38}/></mesh>
-  <mesh position-y={1.44} castShadow><cylinderGeometry args={[.05,.07,1.3,16]}/><meshPhysicalMaterial color="#2a1c11" roughness={.26} clearcoat={.65} clearcoatRoughness={.25}/></mesh>
+  <mesh position-y={.64} castShadow><cylinderGeometry args={[.058,.07,.30,14]}/><meshStandardMaterial color="#2e1c10" roughness={.38}/></mesh>
+  <mesh position-y={1.44} castShadow><cylinderGeometry args={[.05,.07,1.3,16]}/><meshPhysicalMaterial color="#46241a" roughness={.26} clearcoat={.65} clearcoatRoughness={.25}/></mesh>
   <mesh position-y={2.02} rotation-x={Math.PI/2}><torusGeometry args={[.058,.011,8,20]}/><meshStandardMaterial color="#9a885d" metalness={.8} roughness={.35}/></mesh>
-  <mesh position-y={2.1} scale={[1,.45,1]}><sphereGeometry args={[.05,14,10]}/><meshPhysicalMaterial color="#2a1c11" roughness={.26} clearcoat={.65} clearcoatRoughness={.25}/></mesh>
+  <mesh position-y={2.1} scale={[1,.45,1]}><sphereGeometry args={[.05,14,10]}/><meshPhysicalMaterial color="#46241a" roughness={.26} clearcoat={.65} clearcoatRoughness={.25}/></mesh>
  </group>
 }
 export function Candle(){
