@@ -29,7 +29,7 @@ export function useLetterTexture(letter,onLayout,live=false,inkRef=null){
  const build=()=>{
   const {paperBase,live,inkRef}=env.current,letter=latest.current.letter;
   const c=document.createElement('canvas');c.width=PAGE.width;c.height=PAGE.height;const x=c.getContext('2d');x.drawImage(paperBase,0,0);
-  const layout=layoutLetter(x,letter),ink=createInkLayer(c.width,c.height,letter.ink||'#39352e',letter.face);
+  const layout=layoutLetter(x,letter),ink=createInkLayer(c.width,c.height,letter.ink||'#39352e',letter.face,live);
   // Live ink (desk only): each body word remembers the charge it was written
   // with and stays "wet" (darker, slightly bleeding) for its first seconds.
   let wordStyles=null;
@@ -55,7 +55,7 @@ export function useLetterTexture(letter,onLayout,live=false,inkRef=null){
   // No seal is baked into the sheet: the wax seal lives on the rolled
   // scroll (sender-send's RollingLetter and src's ScrollSeal render it
   // from letter.seal), so the opened letter itself stays clean.
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;t.userData={lines:layout.lines.filter(r=>r.text.trim()),layout,paperBase,ink:inkCanvas};return t;
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;if(live){t.generateMipmaps=false;t.minFilter=THREE.LinearFilter}t.userData={lines:layout.lines.filter(r=>r.text.trim()),layout,paperBase,ink:inkCanvas};return t;
  };
  const[texture,setTexture]=useState(()=>{lastBuild.current=performance.now();return build()});
  useEffect(()=>{
