@@ -64,7 +64,13 @@ function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
   // the shot entirely and it never came back. Each pass now also pans
   // camera and target together until the projected centre lands on the
   // screen centre — the same cure the quill desk got.
-  const pts=[[-3.3,-2.7,2.4],[3.3,-2.7,2.4],[-3.2,.2,-.3],[3.2,.2,-.3],[-2.35,2.7,-.3],[2.35,2.7,-.3]].map(q=>new THREE.Vector3(...q));
+  // The top points are not the sheet's rest position: stepped fully up
+  // (a long letter's last fitted line at the platen), the sheet's first
+  // line rides at y ≈ 4.2 — frame to there, near the centre where the
+  // text actually is, or a deep letter clips its own first lines. The
+  // sheet's far corners may leave the frame at the carriage's extremes;
+  // the strike point is always centred, so nothing readable is lost.
+  const pts=[[-3.3,-2.7,2.4],[3.3,-2.7,2.4],[-3.2,.2,-.3],[3.2,.2,-.3],[-1.4,4.35,-.3],[1.4,4.35,-.3]].map(q=>new THREE.Vector3(...q));
   let dist=11;const v=new THREE.Vector3(),off=new THREE.Vector3(),bp=new THREE.Vector3(),bt=new THREE.Vector3(0,-.25,0);
   for(let it=0;it<4;it++){
    bp.set(0,.25,dist);camera.position.copy(bp).add(off);camera.lookAt(bt.clone().add(off));camera.updateMatrixWorld(true);camera.updateProjectionMatrix();
