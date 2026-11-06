@@ -191,3 +191,37 @@ export function makeWaxSealTexture(seal) {
   t.anisotropy = 4;
   return t;
 }
+
+// The seal's body as a patch bent around the scroll: a grid laid on a
+// cylinder of radius R (the coil's radius plus a skin of wax), `width`
+// along the scroll's axis and `halfAngle` around its front, tapered
+// toward an oval footprint so it reads as poured wax rather than a
+// label. Built in a frame where the coil's axis runs along X through
+// the origin and the front faces +z; callers park it on the coil.
+export function buildSealPatch(R, width, halfAngle, wobble = false) {
+  const segW = 22, segA = 16;
+  const pos = [], uv = [], idx = [];
+  for (let iy = 0; iy <= segA; iy++) {
+    const fa = iy / segA, a0 = -halfAngle + 2 * halfAngle * fa;
+    for (let ix = 0; ix <= segW; ix++) {
+      const fs = ix / segW, s0 = -width / 2 + width * fs;
+      const sn = width > 0 ? s0 / (width / 2) : 0, an = halfAngle > 0 ? a0 / halfAngle : 0;
+      const a = a0 * Math.sqrt(Math.max(.08, 1 - .5 * sn * sn));
+      const sx = s0 * Math.sqrt(Math.max(.08, 1 - .3 * an * an));
+      let Rr = R;
+      if (wobble) Rr = R * (1 + .03 * Math.sin(sx * 91 + a * 73) + .02 * Math.sin(sx * 237 - a * 131));
+      pos.push(sx, Rr * Math.sin(a), Rr * Math.cos(a));
+      uv.push(fs, fa);
+    }
+  }
+  for (let iy = 0; iy < segA; iy++) for (let ix = 0; ix < segW; ix++) {
+    const i = iy * (segW + 1) + ix;
+    idx.push(i, i + 1, i + segW + 1, i + 1, i + segW + 2, i + segW + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}

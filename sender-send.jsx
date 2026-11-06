@@ -8,7 +8,7 @@ import {createPigeonClips} from './pigeon-clips';
 import {useSurface} from './physical';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import './sender-send.css';
-import {WAX_COLORS, WAX_DIES, drawWaxSeal, scrollSealOf, makeWaxSealTexture} from './wax-seal';
+import {WAX_COLORS, WAX_DIES, drawWaxSeal, scrollSealOf, makeWaxSealTexture, buildSealPatch} from './wax-seal';
 
 function SendEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
  useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.3;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
@@ -37,14 +37,16 @@ const CAP_OPEN = new THREE.Vector3(-.25, -.6, .15);    // cap rests on the desk,
 const CAP_SHUT = new THREE.Vector3(-.66, 0, 0);        // cap clicked onto the entry (left) end
 
 function RollingLetter({texture, phase, sealing, sealT0, manualRoll, onRolled, seal}) {
-  // The wax seal rides the letter group itself, parked on the coil's
-  // front (local y 3.03, z .41 — just proud of the coil's surface), so
-  // it sits on the scroll while it is stamped and travels with it into
-  // the capsule, shrinking as the scroll shrinks. Local radius is the
-  // world radius over the rolled scale (.3).
+  // The wax seal rides the letter group itself, bent around the coil
+  // (buildSealPatch on the coil's axis at local y 3.03, z .19), so it
+  // sits on the scroll while it is stamped and travels with it into
+  // the capsule, shrinking as the scroll shrinks. Local sizes are the
+  // world sizes over the rolled scale (.3).
   const sealInfo = useMemo(() => scrollSealOf(seal), [seal]);
   const sealTex = useMemo(() => sealInfo ? makeWaxSealTexture(sealInfo) : null, [sealInfo]);
   useEffect(() => () => { if (sealTex) sealTex.dispose(); }, [sealTex]);
+  const sealGeo = useMemo(() => sealInfo ? buildSealPatch(.205, sealInfo.r / .3 * 2, Math.min(1.15, Math.max(.35, sealInfo.r / .3 * 2 / .41))) : null, [sealInfo]);
+  useEffect(() => () => { if (sealGeo) sealGeo.dispose(); }, [sealGeo]);
   const geo = useMemo(() => new THREE.PlaneGeometry(4.65, 6.06, 48, 120), []);
   const group = useRef();
   const rollT0 = useRef(0);
@@ -106,7 +108,7 @@ function RollingLetter({texture, phase, sealing, sealT0, manualRoll, onRolled, s
     g.position.lerp(target, k);
     g.scale.setScalar(THREE.MathUtils.lerp(g.scale.x, scale, k));
   });
-  return <group ref={group} position={LETTER_FLAT.toArray()}><mesh geometry={geo}><meshStandardMaterial map={texture} side={THREE.DoubleSide} roughness={.96} bumpMap={texture} bumpScale={.008}/></mesh>{sealInfo && sealTex && (phase === 'stamp' || phase === 'capsule') && <mesh position={[sealInfo.at * 2, 3.03, .41]} renderOrder={2}><circleGeometry args={[sealInfo.r / .3, 40]}/><meshPhysicalMaterial map={sealTex} transparent roughness={.32} clearcoat={.9} clearcoatRoughness={.3} polygonOffset polygonOffsetFactor={-1}/></mesh>}</group>;
+  return <group ref={group} position={LETTER_FLAT.toArray()}><mesh geometry={geo}><meshStandardMaterial map={texture} side={THREE.DoubleSide} roughness={.96} bumpMap={texture} bumpScale={.008}/></mesh>{sealInfo && sealTex && sealGeo && (phase === 'stamp' || phase === 'capsule') && <mesh position={[sealInfo.at * 2, 3.03, .19]} geometry={sealGeo}><meshPhysicalMaterial map={sealTex} transparent roughness={.32} clearcoat={.9} clearcoatRoughness={.3} side={THREE.DoubleSide}/></mesh>}</group>;
 }
 
 function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
@@ -304,18 +306,9 @@ function StampRig({phase, configRef, onCommit}) {
   const press = useRef(null), hoverAt = useRef(null);
   const settle = useRef(0), settleAt = useRef(null), parkAt = useRef(null);
   const rest = useMemo(() => new THREE.Vector3(1.15, -1.75, .4), []);
-  const waxGeo = useMemo(() => {
-    let s = 421; const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
-    const shape = new THREE.Shape(), n = 28, ph = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
-    for (let i = 0; i <= n; i++) {
-      const a = (i % n) / n * Math.PI * 2;
-      const w = 1 + .05 * Math.sin(a * 3 + ph[0]) + .032 * Math.sin(a * 5 + ph[1]) + .016 * Math.sin(a * 9 + ph[2]);
-      i ? shape.lineTo(Math.cos(a) * w, Math.sin(a) * w) : shape.moveTo(Math.cos(a) * w, Math.sin(a) * w);
-    }
-    return new THREE.ShapeGeometry(shape, 24);
-  }, []);
+  const waxBuiltR = useRef(0);
   const handleProfile = useMemo(() => [[.001, 0], [.075, 0], [.098, .05], [.06, .16], [.048, .34], [.07, .5], [.096, .6], [.08, .72], [.045, .8], [.001, .83]].map(([x, y]) => new THREE.Vector2(x, y)), []);
-  useEffect(() => () => waxGeo.dispose(), [waxGeo]);
+  useEffect(() => () => { if (wax.current) wax.current.geometry.dispose(); }, []);
   const radiusFor = ms => THREE.MathUtils.lerp(.13, .26, smooth(Math.min(ms / 1400, 1)));
   const scrollX = at => SCROLL_POS.x + at * .6;
   useFrame((state, dt) => {
@@ -338,8 +331,14 @@ function StampRig({phase, configRef, onCommit}) {
     g.rotation.z = Math.sin(state.clock.elapsedTime * .8) * .03;
     if (waxAtX !== null && waxR > 0) {
       w.visible = true;
-      w.position.set(waxAtX, SCROLL_POS.y, .375);
-      w.scale.setScalar(waxR);
+      // The pool bends around the coil as it grows: rebuild the patch
+      // at the new size (a few hundred vertices — cheaper than the
+      // letter's per-frame deform).
+      if (Math.abs(waxR - waxBuiltR.current) > .004) {
+        const ng = buildSealPatch(.065, waxR * 2, Math.min(1.15, Math.max(.3, waxR / .065)), true);
+        w.geometry.dispose(); w.geometry = ng; waxBuiltR.current = waxR;
+      }
+      w.position.set(waxAtX, SCROLL_POS.y, SCROLL_POS.z);
       w.material.color.set((WAX_COLORS[configRef.current.color] || WAX_COLORS.oxblood).base);
     } else w.visible = false;
   });
@@ -376,7 +375,7 @@ function StampRig({phase, configRef, onCommit}) {
       <planeGeometry args={[2.0, 1.1]}/>
       <meshBasicMaterial transparent opacity={0} depthWrite={false}/>
     </mesh>}
-    <mesh ref={wax} geometry={waxGeo} visible={false}>
+    <mesh ref={wax} visible={false}>
       <meshPhysicalMaterial color="#711627" roughness={.28} clearcoat={1} clearcoatRoughness={.25}/>
     </mesh>
     <group ref={stamp} position={rest.toArray()} visible={false} scale={.62}>
