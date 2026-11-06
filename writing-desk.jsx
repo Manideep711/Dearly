@@ -45,7 +45,7 @@ function Pen({tip,focused,pulse}){
  // did, with the same little bob on each keystroke.
  const nib=useMemo(()=>{
   const s=new THREE.Shape();
-  s.moveTo(0,0);s.quadraticCurveTo(.108,.06,.128,.20);s.quadraticCurveTo(.132,.36,.082,.50);s.lineTo(-.082,.50);s.quadraticCurveTo(-.132,.36,-.128,.20);s.quadraticCurveTo(-.108,.06,0,0);
+  s.moveTo(0,0);s.quadraticCurveTo(.082,.06,.096,.20);s.quadraticCurveTo(.099,.36,.062,.50);s.lineTo(-.062,.50);s.quadraticCurveTo(-.099,.36,-.096,.20);s.quadraticCurveTo(-.082,.06,0,0);
   const slit=new THREE.Path();slit.moveTo(-.006,.015);slit.lineTo(.006,.015);slit.lineTo(.004,.30);slit.lineTo(-.004,.30);slit.closePath();s.holes.push(slit);
   const hole=new THREE.Path();hole.absarc(0,.325,.016,0,Math.PI*2,true);s.holes.push(hole);
   return new THREE.ExtrudeGeometry(s,{depth:.014,bevelEnabled:true,bevelThickness:.004,bevelSize:.004,bevelSegments:1,curveSegments:12})},[]);
@@ -60,7 +60,7 @@ function Pen({tip,focused,pulse}){
   // (The old pose tipped it 64° toward the camera and 35° sideways: a
   // near-black bar lying across the text, unreadable as a pen.)
   g.rotation.z=THREE.MathUtils.damp(g.rotation.z,focused?-.34:-1.52,8,dt);
-  g.rotation.x=THREE.MathUtils.damp(g.rotation.x,focused?.46:.1,8,dt)});
+  g.rotation.x=THREE.MathUtils.damp(g.rotation.x,focused?.40:.1,8,dt)});
  return <group ref={group} scale={.38} position={[1.65,-3.08,1.55]} rotation={[.1,0,-1.52]}>
   <mesh geometry={nib} position-z={-.007} castShadow><meshStandardMaterial color="#dde1e6" metalness={.95} roughness={.2} envMapIntensity={1.3}/></mesh>
   <mesh position={[0,.32,-.034]} castShadow><boxGeometry args={[.085,.34,.02]}/><meshStandardMaterial color="#17120e" roughness={.6}/></mesh>
