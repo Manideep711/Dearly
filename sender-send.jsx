@@ -8,13 +8,13 @@ import {createPigeonClips} from './pigeon-clips';
 import {useSurface} from './physical';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import './sender-send.css';
-import {WAX_COLORS, WAX_DIES, drawWaxSeal} from './wax-seal';
+import {WAX_COLORS, WAX_DIES, drawWaxSeal, scrollSealOf, makeWaxSealTexture} from './wax-seal';
 
 function SendEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
  useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.3;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
 
 // Sender finish: the missing second half of Dearly.
-// hold -> roll -> capsule -> arrival -> attach -> depart -> sent
+// hold -> roll -> stamp -> capsule -> arrival -> attach -> depart -> sent
 // The letter texture, pigeon model and clip map are the same ones the
 // receiver side uses, so a sent letter looks identical on both ends.
 //
@@ -36,7 +36,15 @@ const BIRD_LAND = new THREE.Vector3(2.35, 0, -.35);
 const CAP_OPEN = new THREE.Vector3(-.25, -.6, .15);    // cap rests on the desk, below the mouth
 const CAP_SHUT = new THREE.Vector3(-.66, 0, 0);        // cap clicked onto the entry (left) end
 
-function RollingLetter({texture, phase, sealing, sealT0, manualRoll, onRolled}) {
+function RollingLetter({texture, phase, sealing, sealT0, manualRoll, onRolled, seal}) {
+  // The wax seal rides the letter group itself, parked on the coil's
+  // front (local y 3.03, z .41 — just proud of the coil's surface), so
+  // it sits on the scroll while it is stamped and travels with it into
+  // the capsule, shrinking as the scroll shrinks. Local radius is the
+  // world radius over the rolled scale (.3).
+  const sealInfo = useMemo(() => scrollSealOf(seal), [seal]);
+  const sealTex = useMemo(() => sealInfo ? makeWaxSealTexture(sealInfo) : null, [sealInfo]);
+  useEffect(() => () => { if (sealTex) sealTex.dispose(); }, [sealTex]);
   const geo = useMemo(() => new THREE.PlaneGeometry(4.65, 6.06, 48, 120), []);
   const group = useRef();
   const rollT0 = useRef(0);
@@ -98,7 +106,7 @@ function RollingLetter({texture, phase, sealing, sealT0, manualRoll, onRolled}) 
     g.position.lerp(target, k);
     g.scale.setScalar(THREE.MathUtils.lerp(g.scale.x, scale, k));
   });
-  return <group ref={group} position={LETTER_FLAT.toArray()}><mesh geometry={geo}><meshStandardMaterial map={texture} side={THREE.DoubleSide} roughness={.96} bumpMap={texture} bumpScale={.008}/></mesh></group>;
+  return <group ref={group} position={LETTER_FLAT.toArray()}><mesh geometry={geo}><meshStandardMaterial map={texture} side={THREE.DoubleSide} roughness={.96} bumpMap={texture} bumpScale={.008}/></mesh>{sealInfo && sealTex && (phase === 'stamp' || phase === 'capsule') && <mesh position={[sealInfo.at * 2, 3.03, .41]} renderOrder={2}><circleGeometry args={[sealInfo.r / .3, 40]}/><meshPhysicalMaterial map={sealTex} transparent roughness={.32} clearcoat={.9} clearcoatRoughness={.3} polygonOffset polygonOffsetFactor={-1}/></mesh>}</group>;
 }
 
 function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
@@ -253,7 +261,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
 // camera drifts between shots, and on portrait screens it pulls back
 // until the shot fits the width (the first framing was landscape-only
 // and pushed the landed pigeon clean off a phone screen).
-const PHASE_CAM = {hold: [-1.55, 2.55, 8.6], roll: [-1.55, 2.55, 8.6], capsule: [.14, 1.5, 7.2], arrival: [1.05, 2.3, 7.2], attach: [2.05, 1.45, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
+const PHASE_CAM = {hold: [-1.55, 2.55, 8.6], roll: [-1.55, 2.55, 8.6], stamp: [-.4, 1.55, 7.2], capsule: [.14, 1.5, 7.2], arrival: [1.05, 2.3, 7.2], attach: [2.05, 1.45, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
 function PhaseCamera({phase}) {
   const camera = useThree(s => s.camera), size = useThree(s => s.size);
   useFrame((_, dt) => {
@@ -277,19 +285,20 @@ function SendShadow({phase}) {
 }
 
 // The writer's signet, as a stage prop: a walnut-handled stamp with a
-// brass die that follows the writer's hand over the held letter. Press
-// and hold on the sheet and a pool of wax grows beneath the die — the
-// longer the hold, the wider the seal. Releasing commits the seal into
-// the letter itself (letter.seal), where the texture builder bakes it
-// in for the desk, the roll and the receiver alike. One seal only:
-// pressing again moves it. A drag instead of a still press cancels the
-// stamp and hands the gesture to the hand-roll (suppressRoll is the
-// shared flag with the page's touch handlers).
-function StampRig({phase, configRef, suppressRoll, onCommit}) {
+// brass die. Once the letter is rolled, the stamp comes out: press and
+// hold on the scroll and a pool of wax grows beneath the die — the
+// longer the hold, the wider the seal. Releasing commits the seal
+// (letter.seal: die, initials, colour, position along the scroll,
+// radius); RollingLetter wears it on the coil from then on, the
+// capsule carries it away, and the reader will break it to unroll.
+// One seal only: pressing again moves it. After a stamp lands, the
+// hover-follow parks near the press point so the stamp flies home and
+// the fresh seal is revealed instead of staying covered.
+function StampRig({phase, configRef, onCommit}) {
   const stamp = useRef(), wax = useRef();
-  const press = useRef(null), hover = useRef(null);
-  const settle = useRef(0), settleSeal = useRef(null), park = useRef(null);
-  const rest = useMemo(() => new THREE.Vector3(.55, -2.45, .8), []);
+  const press = useRef(null), hoverAt = useRef(null);
+  const settle = useRef(0), settleAt = useRef(null), parkAt = useRef(null);
+  const rest = useMemo(() => new THREE.Vector3(.2, -2.35, .95), []);
   const waxGeo = useMemo(() => {
     let s = 421; const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
     const shape = new THREE.Shape(), n = 28, ph = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
@@ -302,69 +311,64 @@ function StampRig({phase, configRef, suppressRoll, onCommit}) {
   }, []);
   const handleProfile = useMemo(() => [[.001, 0], [.075, 0], [.098, .05], [.06, .16], [.048, .34], [.07, .5], [.096, .6], [.08, .72], [.045, .8], [.001, .83]].map(([x, y]) => new THREE.Vector2(x, y)), []);
   useEffect(() => () => waxGeo.dispose(), [waxGeo]);
-  const radiusFor = ms => THREE.MathUtils.lerp(.17, .5, smooth(Math.min(ms / 1400, 1)));
-  const clampLocal = (lx, ly, m) => ({x: THREE.MathUtils.clamp(lx, -2.325 + m, 2.325 - m), y: THREE.MathUtils.clamp(ly, -3.03 + m, 3.03 - m)});
+  const radiusFor = ms => THREE.MathUtils.lerp(.13, .26, smooth(Math.min(ms / 1400, 1)));
+  const scrollX = at => SCROLL_POS.x + at * .6;
   useFrame((state, dt) => {
     const g = stamp.current, w = wax.current; if (!g || !w) return;
-    const active = phase === 'hold';
+    const active = phase === 'stamp';
     g.visible = active;
     if (!active) { w.visible = false; press.current = null; return; }
     const now = performance.now();
-    let target = rest, waxR = 0, waxAt = null, fast = false;
+    let target = rest, waxR = 0, waxAtX = null, fast = false;
     if (press.current && !press.current.cancelled) {
       const p = press.current;
-      waxR = radiusFor(now - p.t0); waxAt = p; fast = true;
-      target = new THREE.Vector3(LETTER_FLAT.x + p.lx, LETTER_FLAT.y + p.ly, .045);
-    } else if (settleSeal.current && now < settle.current) {
-      waxR = settleSeal.current.rWorld; waxAt = settleSeal.current;
-    } else if (hover.current && !(park.current && Math.hypot(hover.current.x - park.current.x, hover.current.y - park.current.y) < .3)) {
-      // After a stamp lands, the pointer usually rests right on the
-      // fresh seal — park the hover-follow there so the stamp flies
-      // home and the seal is revealed instead of staying covered.
-      target = new THREE.Vector3(LETTER_FLAT.x + hover.current.x, LETTER_FLAT.y + hover.current.y, .55);
+      waxR = radiusFor(now - p.t0); waxAtX = scrollX(p.at); fast = true;
+      target = new THREE.Vector3(scrollX(p.at), SCROLL_POS.y + .02, .37);
+    } else if (settleAt.current && now < settle.current) {
+      waxR = settleAt.current.r; waxAtX = scrollX(settleAt.current.at);
+    } else if (hoverAt.current !== null && !(parkAt.current !== null && Math.abs(hoverAt.current - parkAt.current) < .3)) {
+      target = new THREE.Vector3(scrollX(hoverAt.current), SCROLL_POS.y + .06, .8);
     }
     g.position.lerp(target, 1 - Math.exp(-Math.min(dt, .05) * (fast ? 18 : 7)));
     g.rotation.z = Math.sin(state.clock.elapsedTime * .8) * .03;
-    if (waxAt && waxR > 0) {
+    if (waxAtX !== null && waxR > 0) {
       w.visible = true;
-      w.position.set(LETTER_FLAT.x + waxAt.x, LETTER_FLAT.y + waxAt.y, .015);
+      w.position.set(waxAtX, SCROLL_POS.y, .375);
       w.scale.setScalar(waxR);
       w.material.color.set((WAX_COLORS[configRef.current.color] || WAX_COLORS.oxblood).base);
     } else w.visible = false;
   });
+  const atFromEvent = e => THREE.MathUtils.clamp((e.point.x - SCROLL_POS.x) / .6, -1, 1);
   const down = e => {
-    if (phase !== 'hold') return;
-    park.current = null;
+    if (phase !== 'stamp') return;
+    parkAt.current = null;
     e.stopPropagation();
-    const c = clampLocal(e.point.x - LETTER_FLAT.x, e.point.y - LETTER_FLAT.y, .5);
-    press.current = {lx: c.x, ly: c.y, t0: performance.now(), cancelled: false, px: e.point.x, py: e.point.y};
-    suppressRoll.current = true;
+    press.current = {at: atFromEvent(e), t0: performance.now(), cancelled: false, px: e.point.x, py: e.point.y};
     try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
   };
   const move = e => {
     if (press.current && !press.current.cancelled) {
-      if (Math.hypot(e.point.x - press.current.px, e.point.y - press.current.py) > .35) { press.current.cancelled = true; suppressRoll.current = false; }
-      else { const c = clampLocal(e.point.x - LETTER_FLAT.x, e.point.y - LETTER_FLAT.y, .5); press.current.lx = c.x; press.current.ly = c.y; }
-    } else if (phase === 'hold') hover.current = clampLocal(e.point.x - LETTER_FLAT.x, e.point.y - LETTER_FLAT.y, .2);
+      if (Math.hypot(e.point.x - press.current.px, e.point.y - press.current.py) > .3) press.current.cancelled = true;
+      else press.current.at = atFromEvent(e);
+    } else if (phase === 'stamp') hoverAt.current = atFromEvent(e);
   };
   const up = () => {
     if (press.current && !press.current.cancelled) {
       const p = press.current, ms = performance.now() - p.t0;
       if (ms > 120) {
         const rW = radiusFor(ms), cfg = configRef.current;
-        onCommit({die: cfg.die, initials: cfg.initials, color: cfg.color, x: (p.lx / 4.65 + .5) * 1536, y: (.5 - p.ly / 6.06) * 2048, r: rW * (1536 / 4.65)});
-        settleSeal.current = {x: p.lx, y: p.ly, rWorld: rW};
+        onCommit({die: cfg.die, initials: cfg.initials, color: cfg.color, at: Math.round(p.at * 100) / 100, r: Math.round(rW * 1000) / 1000});
+        settleAt.current = {at: p.at, r: rW};
         settle.current = performance.now() + 450;
-        park.current = {x: p.lx, y: p.ly};
+        parkAt.current = p.at;
         if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(12);
       }
     }
     press.current = null;
-    suppressRoll.current = false;
   };
   return <>
-    {phase === 'hold' && <mesh position={[LETTER_FLAT.x, LETTER_FLAT.y, .02]} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
-      <planeGeometry args={[4.65, 6.06]}/>
+    {phase === 'stamp' && <mesh position={[SCROLL_POS.x, SCROLL_POS.y, .6]} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+      <planeGeometry args={[2.0, 1.1]}/>
       <meshBasicMaterial transparent opacity={0} depthWrite={false}/>
     </mesh>}
     <mesh ref={wax} geometry={waxGeo} visible={false}>
@@ -380,7 +384,7 @@ function StampRig({phase, configRef, suppressRoll, onCommit}) {
   </>;
 }
 
-function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, legTarget, manualRoll, onRolled, stampConfigRef, suppressRoll, onCommitSeal}) {
+function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, legTarget, manualRoll, onRolled, stampConfigRef, onCommitSeal}) {
   const tex = useLetterTexture(letter, undefined, true);
   const surface = useSurface();
   return <>
@@ -394,15 +398,16 @@ function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, le
     <pointLight position={[5, -2, 4]} intensity={12} color="#b7c6ce"/>
     <mesh position={[0, 0, -6]}><planeGeometry args={[200, 200]}/><meshStandardMaterial color="#36342f" roughness={1} bumpMap={surface} bumpScale={.035}/></mesh>
     <SendShadow phase={phase}/>
-    <RollingLetter texture={tex} phase={phase} sealing={sealing} sealT0={sealT0} manualRoll={manualRoll} onRolled={onRolled}/>
+    <RollingLetter texture={tex} phase={phase} sealing={sealing} sealT0={sealT0} manualRoll={manualRoll} onRolled={onRolled} seal={letter.seal}/>
     <CapsuleRig phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} legTarget={legTarget}/>
     <SenderBird phase={phase} attached={attached} onLanded={onLanded} legTarget={legTarget}/>
-    <StampRig phase={phase} configRef={stampConfigRef} suppressRoll={suppressRoll} onCommit={onCommitSeal}/>
+    <StampRig phase={phase} configRef={stampConfigRef} onCommit={onCommitSeal}/>
   </>;
 }
 
 const CAPTIONS = {
-  hold: ['Hold it a moment longer.', 'Press and hold on the letter to stamp your seal — then scroll or drag to roll it up.'],
+  hold: ['Hold it a moment longer.', 'Scroll or drag to roll it up — the seal goes on once it is rolled.'],
+  stamp: ['Seal it shut.', 'Press and hold on the scroll to press your wax seal onto it. The longer the hold, the wider the seal.'],
   roll: ['Roll it up, tight and true.', 'Every word you wrote, curled safe inside.'],
   capsule: ['Into the brass capsule.', 'The same capsule your reader will find on her leg.'],
   arrival: ['A little messenger. A long way home.', 'She has come for your words.'],
@@ -410,7 +415,7 @@ const CAPTIONS = {
   depart: ['And away she goes.', 'Somewhere out there, a letter is flying.'],
   sent: ['Your letter is on its way.', 'Share the link, and the pigeon does the rest.']
 };
-const STEP_OF = {hold: 0, roll: 0, capsule: 1, arrival: 2, attach: 2, depart: 3, sent: 3};
+const STEP_OF = {hold: 0, roll: 0, stamp: 0, capsule: 1, arrival: 2, attach: 2, depart: 3, sent: 3};
 
 export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLetter, onSeal}) {
   const [phase, setPhase] = useState('hold');
@@ -428,13 +433,12 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
   const [stampCfg, setStampCfg] = useState(() => { try { return {die: 'monogram', initials: '', color: 'oxblood', ...JSON.parse(localStorage.getItem('dearly-stamp') || '{}')}; } catch { return {die: 'monogram', initials: '', color: 'oxblood'}; } });
   const [stampOpen, setStampOpen] = useState(false);
   const stampCfgRef = useRef(stampCfg); stampCfgRef.current = stampCfg;
-  const suppressRoll = useRef(false);
   const updateStampCfg = patch => setStampCfg(c => { const v = {...c, ...patch}; try { localStorage.setItem('dearly-stamp', JSON.stringify(v)); } catch {} return v; });
   const stampPreview = useRef();
-  useEffect(() => { if (phase !== 'hold') setStampOpen(false); }, [phase]);
+  useEffect(() => { if (phase !== 'stamp') setStampOpen(false); }, [phase]);
   useEffect(() => { const c = stampPreview.current; if (!c) return; const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); drawWaxSeal(x, {...stampCfg, x: 0, y: 0}, c.width / 2, c.height / 2, c.width / 2 - 6); }, [stampCfg, stampOpen]);
   const [manualActive, setManualActive] = useState(false);
-  useEffect(() => { if (phase === 'roll') later(() => { if (!manualRoll.current.active) setPhase('capsule'); }, 2400); }, [phase]);
+  useEffect(() => { if (phase === 'roll') later(() => { if (!manualRoll.current.active) setPhase('stamp'); }, 2400); }, [phase]);
   useEffect(() => { if (phase === 'depart') later(() => setPhase('sent'), 3600); }, [phase]);
 
   const seal = () => { sealT0.current = performance.now(); setSealing(true); later(() => setPhase('arrival'), 1700); };
@@ -455,15 +459,15 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
     manualRoll.current.value = clamp01(manualRoll.current.value + delta);
     if (phase === 'hold') setPhase('roll');
   };
-  const handleRolled = () => { manualRoll.current.active = false; setManualActive(false); setPhase('capsule'); };
-  const finishRoll = () => { manualRoll.current.active = false; setManualActive(false); later(() => setPhase('capsule'), 700); };
+  const handleRolled = () => { manualRoll.current.active = false; setManualActive(false); setPhase('stamp'); };
+  const finishRoll = () => { manualRoll.current.active = false; setManualActive(false); later(() => setPhase('stamp'), 700); };
   return <div className="experience send-experience"
-    onWheel={e => { if (!suppressRoll.current) driveRoll(e.deltaY / 600); }}
+    onWheel={e => driveRoll(e.deltaY / 600)}
     onTouchStart={e => { touchY.current = e.touches[0].clientY; }}
-    onTouchMove={e => { if (touchY.current === null) return; if (suppressRoll.current) { touchY.current = e.touches[0].clientY; return; } driveRoll((touchY.current - e.touches[0].clientY) / 260); touchY.current = e.touches[0].clientY; }}
+    onTouchMove={e => { if (touchY.current === null) return; driveRoll((touchY.current - e.touches[0].clientY) / 260); touchY.current = e.touches[0].clientY; }}
     onTouchEnd={() => { touchY.current = null; }}>
     <Canvas shadows dpr={[1, 1.5]} camera={{position: [0, .4, 10.4], fov: 42}} gl={{antialias: true}}>
-      <Suspense fallback={null}><SendScene letter={letter} phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} onLanded={() => setPhase('attach')} legTarget={legTarget} manualRoll={manualRoll} onRolled={handleRolled} stampConfigRef={stampCfgRef} suppressRoll={suppressRoll} onCommitSeal={s => { if (onSeal) onSeal(s); }}/></Suspense>
+      <Suspense fallback={null}><SendScene letter={letter} phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} onLanded={() => setPhase('attach')} legTarget={legTarget} manualRoll={manualRoll} onRolled={handleRolled} stampConfigRef={stampCfgRef} onCommitSeal={s => { if (onSeal) onSeal(s); }}/></Suspense>
     </Canvas>
     <div className="vignette"/>
     <header><span className="brand">dearly<span>LETTERS, FELT.</span></span><button onClick={onBack}>← Back to the desk</button></header>
@@ -471,7 +475,8 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
     <div className="bottom">
       <div className="progress">{['The rolling', 'The capsule', 'The messenger', 'The departure'].map((x, i) => <span key={x} className={step === i ? 'active' : ''}><b>0{i + 1}</b>{x}</span>)}</div>
       <div className="controls">
-        {phase === 'hold' && <><button onClick={() => setStampOpen(v => !v)} aria-pressed={stampOpen}>Your stamp</button><button className="primary" onClick={() => setPhase('roll')}>Roll up your letter <span>↗</span></button></>}
+        {phase === 'hold' && <button className="primary" onClick={() => setPhase('roll')}>Roll up your letter <span>↗</span></button>}
+        {phase === 'stamp' && <><button onClick={() => setStampOpen(v => !v)} aria-pressed={stampOpen}>Your stamp</button><button className="primary" onClick={() => { setPhase('capsule'); seal(); }}>Slide it into the capsule <span>↗</span></button></>}
         {phase === 'roll' && (manualActive ? <button className="primary" onClick={finishRoll}>Finish rolling <span>↗</span></button> : <button className="primary" disabled>Rolling…</button>)}
         {phase === 'capsule' && <button className="primary" disabled={sealing} onClick={seal}>{sealing ? 'Sealing…' : 'Slide it into the capsule'} <span>↗</span></button>}
         {phase === 'arrival' && <button className="primary" disabled>She is arriving…</button>}
@@ -486,13 +491,13 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
       </div>
       {phase !== 'sent' && <button className="text-button" onClick={() => setPhase('sent')}>Skip to the letter link</button>}
     </div>
-    {stampOpen && phase === 'hold' && <div className="stamp-panel">
+    {stampOpen && phase === 'stamp' && <div className="stamp-panel">
       <canvas ref={stampPreview} width={116} height={116}/>
       <div className="stamp-fields">
         <div className="stamp-dies">{WAX_DIES.map(d => <button key={d.id} className={stampCfg.die === d.id ? 'on' : ''} onClick={() => updateStampCfg({die: d.id})}>{d.label}</button>)}</div>
         {stampCfg.die !== 'airmail' && <label className="stamp-initials">Initials <input value={stampCfg.initials} maxLength={3} onChange={e => updateStampCfg({initials: e.target.value.toUpperCase().replace(/[^A-Z]/g, '')})} placeholder="AB"/></label>}
         <div className="stamp-colors">{Object.entries(WAX_COLORS).map(([id, c]) => <button key={id} title={c.label} aria-label={c.label} className={stampCfg.color === id ? 'sw on' : 'sw'} style={{background: c.base}} onClick={() => updateStampCfg({color: id})}/>)}</div>
-        <p>Press and hold on the letter to stamp it. The longer the hold, the wider the seal.</p>
+        <p>Press and hold on the scroll to seal it. The longer the hold, the wider the seal.</p>
         {letter.seal && <button className="text-button" onClick={() => { if (onSeal) onSeal(null); }}>Lift the seal off</button>}
       </div>
     </div>}

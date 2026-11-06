@@ -1,7 +1,9 @@
-// The writer's signet: a wax seal pressed onto the letter before it is
-// rolled. One drawing routine serves everywhere — the preview in the
-// stamp panel and the seal baked into the letter's texture — so what
-// the sender presses is exactly what the receiver finds on the sheet.
+import * as THREE from 'three';
+// The writer's signet: a wax seal pressed onto the rolled scroll, the
+// classic way — it holds the letter shut, rides inside the capsule,
+// and the reader breaks it to unroll. One drawing routine serves
+// everywhere (the stamp panel preview and the seal disc's texture on
+// both ends), so what the sender presses is what the receiver breaks.
 export const WAX_COLORS = {
   oxblood: {label: 'Oxblood', base: '#711627', dark: '#460c19', light: '#a23347'},
   navy:    {label: 'Navy',    base: '#22385c', dark: '#122138', light: '#40608f'},
@@ -22,7 +24,7 @@ export const WAX_DIES = [
 // texture rebuild and on both ends of the journey, so the edge is
 // seeded from the seal's own identity, never from Math.random.
 function seedOf(seal) {
-  const s = `${seal.die}|${seal.initials || ''}|${seal.color}|${Math.round(seal.x || 0)}|${Math.round(seal.y || 0)}`;
+  const s = `${seal.die}|${seal.initials || ''}|${seal.color}|${Math.round((seal.at ?? seal.x ?? 0) * 100)}|${Math.round(seal.y || 0)}`;
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   return () => { h = Math.imul(h ^ (h >>> 15), 2246822519); h = Math.imul(h ^ (h >>> 13), 3266489917); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
@@ -164,4 +166,28 @@ export function drawWaxSeal(ctx, seal, cx, cy, r) {
   ctx.beginPath(); ctx.ellipse(0, -r * .52, r * .62, r * .3, 0, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
   ctx.restore();
+}
+
+// A scroll seal as stored on the letter: {die, initials, color, at, r}
+// — `at` is the position along the scroll's length (-1..1) and `r` the
+// seal's radius in world units. Seals stamped by the earlier design
+// (page coordinates on the flat sheet) are normalised to a centred
+// scroll seal so an old draft still sends and arrives sealed.
+export function scrollSealOf(seal) {
+  if (!seal) return null;
+  const at = THREE.MathUtils.clamp(typeof seal.at === 'number' ? seal.at : 0, -1, 1);
+  const r = typeof seal.r === 'number' && seal.r > 0 && seal.r < 1 ? THREE.MathUtils.clamp(seal.r, .12, .26) : .19;
+  return {die: seal.die || 'monogram', initials: seal.initials || '', color: seal.color || 'oxblood', at, r};
+}
+// The seal as a texture for the 3D discs on the scroll (sender and
+// receiver share it, so the seal looks identical on both ends).
+export function makeWaxSealTexture(seal) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const x = c.getContext('2d');
+  drawWaxSeal(x, seal, 128, 128, 116);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
 }

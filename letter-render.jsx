@@ -2,7 +2,6 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {useLoader} from '@react-three/fiber';
 import * as THREE from 'three';
 import {createInkLayer,compositeInk} from './ink';
-import {drawWaxSeal} from './wax-seal';
 import {layoutLetter,PAGE} from './letter-layout';
 import {paperSource} from './paper-picker';
 export function useLetterTexture(letter,onLayout,live=false,inkRef=null){
@@ -53,11 +52,9 @@ export function useLetterTexture(letter,onLayout,live=false,inkRef=null){
    for(const stroke of letter.signature){if(!Array.isArray(stroke))continue;sx.beginPath();stroke.forEach((p,i)=>{if(Array.isArray(p)&&p.every(Number.isFinite))i?sx.lineTo(p[0],p[1]):sx.moveTo(p[0],p[1])});sx.stroke()}sx.restore();
   }
   compositeInk(x,inkCanvas);
-  // The writer's signet, pressed before the letter was rolled: drawn
-  // over the ink (wax sits on the paper, never multiplied into it), so
-  // it appears on the desk, in the sending and on the receiver's sheet
-  // exactly where it was stamped.
-  if(letter.seal)drawWaxSeal(x,letter.seal,letter.seal.x,letter.seal.y,letter.seal.r);
+  // No seal is baked into the sheet: the wax seal lives on the rolled
+  // scroll (sender-send's RollingLetter and src's ScrollSeal render it
+  // from letter.seal), so the opened letter itself stays clean.
   const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;t.userData={lines:layout.lines.filter(r=>r.text.trim()),layout,paperBase,ink:inkCanvas};return t;
  };
  const[texture,setTexture]=useState(()=>{lastBuild.current=performance.now();return build()});
