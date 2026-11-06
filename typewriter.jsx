@@ -88,7 +88,12 @@ function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
   c.font=`${row.size}px ${faceFont(letter)}`;
   const within=Math.max(0,Math.min(row.text.length,caret-row.start));
   const px=160+c.measureText(row.text.slice(0,within)).width;
-  const ly=(.5-row.baseline/PAGE.height)*PH;
+  // The sheet is one page: it can only step up until its last fitted
+  // line rides the platen. Unclamped, a caret sitting in the overflow
+  // lines of a long letter lifted the sheet by that line's full depth
+  // until the whole page had left the frame — typing went invisible
+  // (the framing fix alone could never have cured that).
+  const ly=Math.max((.5-row.baseline/PAGE.height)*PH,(.5-1790/PAGE.height)*PH);
   const prev=targets.current;
   if(prev.row>=0&&idx>prev.row&&soundRef.current){sfx.on=true;sfx.ding()}
   // The strike line rides at .30, not at the platen's centre: the roller

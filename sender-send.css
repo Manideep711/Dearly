@@ -11,3 +11,20 @@
   .send-experience .controls button { font-size: 10px; padding: 12px 14px; }
   .send-experience .primary { min-width: 200px; }
 }
+/* Your stamp: the signet picker, in the sending's dark chrome. */
+.stamp-panel { position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%); z-index: 4; display: flex; gap: 16px; align-items: flex-start; background: rgba(30,29,24,.93); border: 1px solid rgba(209,195,169,.25); padding: 16px 18px; backdrop-filter: blur(14px); max-width: min(92vw, 440px); }
+.stamp-panel canvas { flex: none; }
+.stamp-fields { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stamp-dies { display: flex; flex-wrap: wrap; gap: 6px; }
+.stamp-dies button { padding: 7px 10px; font-size: 10px; letter-spacing: .4px; }
+.stamp-dies button.on { background: #d8c6a3; color: #29291f; border-color: #d8c6a3; }
+.stamp-initials { margin: 0; font-size: 9px; letter-spacing: 2px; color: #b8a98c; }
+.stamp-initials input { width: 90px; display: inline-block; margin: 0 0 0 8px; padding: 7px 9px; font-size: 14px; text-transform: uppercase; }
+.stamp-colors { display: flex; gap: 8px; }
+.stamp-colors .sw { width: 26px; height: 26px; border-radius: 50%; padding: 0; border: 1px solid rgba(255,255,255,.25); }
+.stamp-colors .sw.on { box-shadow: 0 0 0 2px #1e1d18, 0 0 0 4px #d8c6a3; }
+.stamp-panel p { margin: 0; font-size: 10px; color: #a79f8f; line-height: 1.5; }
+@media (max-width: 650px) {
+  .stamp-panel { bottom: 136px; padding: 12px; gap: 10px; }
+  .stamp-panel canvas { width: 84px; height: 84px; }
+}
