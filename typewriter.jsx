@@ -45,6 +45,7 @@ function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
  const tex=useLetterTexture(letter,onMetrics,true,null),wood=useWood();
  const {camera,size}=useThree();
  const carriage=useRef(),paperGroup=useRef(),paperMesh=useRef(),typebar=useRef(),targets=useRef({x:0,y:-1.65,row:-1});
+ const home=useRef({pos:new THREE.Vector3(0,.25,11),tgt:new THREE.Vector3(0,-.25,0)}),look=useRef(new THREE.Vector3(0,-.25,0));
  // The paper itself lives inside the carriage group; build it once the
  // group exists and keep its texture current.
  useEffect(()=>{
@@ -55,17 +56,26 @@ function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
  },[]);
  useEffect(()=>{if(paperMesh.current)paperMesh.current.material.map=tex},[tex]);
  useEffect(()=>{
-  // Fit machine + the visible sheet zone by projecting sample points.
-  const pts=[[-3.2,-2.62,2.6],[3.2,-2.62,2.6],[-3.2,.6,-1.6],[3.2,.6,-1.6],[-2.4,1.7,-1.2],[2.4,1.7,-1.2]].map(q=>new THREE.Vector3(...q));
-  let dist=11;const v=new THREE.Vector3();
-  for(let it=0;it<3;it++){
-   camera.position.set(0,.25,dist);camera.lookAt(0,-.25,0);camera.updateMatrixWorld(true);camera.updateProjectionMatrix();
+  // Fit machine + the visible sheet zone by projecting sample points —
+  // and fit the CENTRE as well as the span. The old loop only scaled
+  // the span while staring at a fixed point, so on wide or resized
+  // stages the correctly-sized machine still slid out of frame; worse,
+  // when focusing resized the stage the re-fit pushed the sheet out of
+  // the shot entirely and it never came back. Each pass now also pans
+  // camera and target together until the projected centre lands on the
+  // screen centre — the same cure the quill desk got.
+  const pts=[[-3.3,-2.7,2.4],[3.3,-2.7,2.4],[-3.2,.2,-.3],[3.2,.2,-.3],[-2.35,2.7,-.3],[2.35,2.7,-.3]].map(q=>new THREE.Vector3(...q));
+  let dist=11;const v=new THREE.Vector3(),off=new THREE.Vector3(),bp=new THREE.Vector3(),bt=new THREE.Vector3(0,-.25,0);
+  for(let it=0;it<4;it++){
+   bp.set(0,.25,dist);camera.position.copy(bp).add(off);camera.lookAt(bt.clone().add(off));camera.updateMatrixWorld(true);camera.updateProjectionMatrix();
    let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
    for(const q of pts){v.copy(q).project(camera);minx=Math.min(minx,v.x);maxx=Math.max(maxx,v.x);miny=Math.min(miny,v.y);maxy=Math.max(maxy,v.y)}
    const wPx=Math.max(1,(maxx-minx)*size.width/2),hPx=Math.max(1,(maxy-miny)*size.height/2),k=Math.min((size.width-24)/wPx,(size.height-24)/hPx);
    dist/=k;
+   const D=camera.position.distanceTo(bt.clone().add(off)),visH=2*D*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)),visW=visH*(size.width/size.height);
+   off.add(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0).multiplyScalar((minx+maxx)/2*visW/2)).add(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1).multiplyScalar((miny+maxy)/2*visH/2));
   }
-  camera.position.set(0,.25,dist);camera.lookAt(0,-.25,0);camera.updateMatrixWorld(true);camera.updateProjectionMatrix();
+  bp.set(0,.25,dist);camera.position.copy(bp).add(off);camera.lookAt(bt.clone().add(off));camera.updateMatrixWorld(true);camera.updateProjectionMatrix();home.current.pos.copy(camera.position);home.current.tgt.copy(bt).add(off);look.current.copy(home.current.tgt);
  },[camera,size]);
  useEffect(()=>{
   // The carriage carries the strike point to the centre of the machine;
@@ -89,6 +99,7 @@ function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
   if(prev.row<0){if(carriage.current)carriage.current.position.x=targets.current.x;if(paperGroup.current)paperGroup.current.position.y=targets.current.y}
  },[tex,caret,letter,soundRef]);
  useFrame((_,dt)=>{
+  const h=home.current,ck=1-Math.exp(-dt*3);camera.position.lerp(h.pos,ck);look.current.lerp(h.tgt,ck);camera.lookAt(look.current);
   const t=targets.current;
   if(carriage.current)carriage.current.position.x=THREE.MathUtils.damp(carriage.current.position.x,t.x,14,dt);
   if(paperGroup.current)paperGroup.current.position.y=THREE.MathUtils.damp(paperGroup.current.position.y,t.y,7,dt);
