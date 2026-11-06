@@ -288,7 +288,7 @@ function SendShadow({phase}) {
 function StampRig({phase, configRef, suppressRoll, onCommit}) {
   const stamp = useRef(), wax = useRef();
   const press = useRef(null), hover = useRef(null);
-  const settle = useRef(0), settleSeal = useRef(null);
+  const settle = useRef(0), settleSeal = useRef(null), park = useRef(null);
   const rest = useMemo(() => new THREE.Vector3(.55, -2.45, .8), []);
   const waxGeo = useMemo(() => {
     let s = 421; const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
@@ -317,7 +317,10 @@ function StampRig({phase, configRef, suppressRoll, onCommit}) {
       target = new THREE.Vector3(LETTER_FLAT.x + p.lx, LETTER_FLAT.y + p.ly, .045);
     } else if (settleSeal.current && now < settle.current) {
       waxR = settleSeal.current.rWorld; waxAt = settleSeal.current;
-    } else if (hover.current) {
+    } else if (hover.current && !(park.current && Math.hypot(hover.current.x - park.current.x, hover.current.y - park.current.y) < .3)) {
+      // After a stamp lands, the pointer usually rests right on the
+      // fresh seal — park the hover-follow there so the stamp flies
+      // home and the seal is revealed instead of staying covered.
       target = new THREE.Vector3(LETTER_FLAT.x + hover.current.x, LETTER_FLAT.y + hover.current.y, .55);
     }
     g.position.lerp(target, 1 - Math.exp(-Math.min(dt, .05) * (fast ? 18 : 7)));
@@ -331,6 +334,7 @@ function StampRig({phase, configRef, suppressRoll, onCommit}) {
   });
   const down = e => {
     if (phase !== 'hold') return;
+    park.current = null;
     e.stopPropagation();
     const c = clampLocal(e.point.x - LETTER_FLAT.x, e.point.y - LETTER_FLAT.y, .5);
     press.current = {lx: c.x, ly: c.y, t0: performance.now(), cancelled: false, px: e.point.x, py: e.point.y};
@@ -351,6 +355,7 @@ function StampRig({phase, configRef, suppressRoll, onCommit}) {
         onCommit({die: cfg.die, initials: cfg.initials, color: cfg.color, x: (p.lx / 4.65 + .5) * 1536, y: (.5 - p.ly / 6.06) * 2048, r: rW * (1536 / 4.65)});
         settleSeal.current = {x: p.lx, y: p.ly, rWorld: rW};
         settle.current = performance.now() + 450;
+        park.current = {x: p.lx, y: p.ly};
         if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(12);
       }
     }
