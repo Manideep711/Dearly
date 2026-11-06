@@ -37,37 +37,35 @@ function DeskEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
  useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.35;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
 function Pen({tip,focused,pulse}){
  const group=useRef();
- // A fountain pen with a steel nib, built around its tip: the nib is a
- // stamped outline (extruded, with the slit and breather hole as real
- // holes), a dark feed beneath it, then the grip section and a glossy
- // ebonite barrel with a brass band. It carries its own ink — no
- // inkwell, no dipping — and rides the caret exactly where the quill
- // did, with the same little bob on each keystroke.
+ // An oversized fountain pen, built around its tip, with the presence
+ // to read as a pen at the desk's framing: a broad steel nib (stamped
+ // outline, slit and breather hole as real holes), a dark feed, a
+ // tapered section, a thick glossy ebonite barrel and a brass band at
+ // the joint. It carries its own ink — no inkwell, no dipping — and
+ // rides the caret with a little bob on each keystroke. The writing
+ // pose is a held pen's: nib on the point, barrel up toward the writer
+ // at a clear slant, leaning right, away from the line just written,
+ // so it never blankets the words.
  const nib=useMemo(()=>{
   const s=new THREE.Shape();
-  s.moveTo(0,0);s.quadraticCurveTo(.082,.06,.096,.20);s.quadraticCurveTo(.099,.36,.062,.50);s.lineTo(-.062,.50);s.quadraticCurveTo(-.099,.36,-.096,.20);s.quadraticCurveTo(-.082,.06,0,0);
-  const slit=new THREE.Path();slit.moveTo(-.006,.015);slit.lineTo(.006,.015);slit.lineTo(.004,.30);slit.lineTo(-.004,.30);slit.closePath();s.holes.push(slit);
-  const hole=new THREE.Path();hole.absarc(0,.325,.016,0,Math.PI*2,true);s.holes.push(hole);
-  return new THREE.ExtrudeGeometry(s,{depth:.014,bevelEnabled:true,bevelThickness:.004,bevelSize:.004,bevelSegments:1,curveSegments:12})},[]);
+  s.moveTo(0,0);s.quadraticCurveTo(.088,.06,.115,.21);s.quadraticCurveTo(.12,.38,.07,.52);s.lineTo(-.07,.52);s.quadraticCurveTo(-.12,.38,-.115,.21);s.quadraticCurveTo(-.088,.06,0,0);
+  const slit=new THREE.Path();slit.moveTo(-.007,.015);slit.lineTo(.007,.015);slit.lineTo(.005,.32);slit.lineTo(-.005,.32);slit.closePath();s.holes.push(slit);
+  const hole=new THREE.Path();hole.absarc(0,.35,.018,0,Math.PI*2,true);s.holes.push(hole);
+  return new THREE.ExtrudeGeometry(s,{depth:.016,bevelEnabled:true,bevelThickness:.005,bevelSize:.005,bevelSegments:1,curveSegments:12})},[]);
  useEffect(()=>()=>{nib.dispose()},[nib]);
  useFrame((_,dt)=>{const g=group.current;if(!g)return;
   const goal=focused?tip.current:RESTV;
   g.position.lerp(goal,1-Math.exp(-dt*(focused?26:5)));
   if(focused){const age=performance.now()-pulse.current;if(age<230){const b=Math.sin(age/230*Math.PI);g.position.y-=b*.04}}
-  // Writing pose: the pen stands at the caret like a held pen — nib on
-  // the point, barrel rising up toward the writer and leaning RIGHT,
-  // away from the line just written, so it never blankets the words.
-  // (The old pose tipped it 64° toward the camera and 35° sideways: a
-  // near-black bar lying across the text, unreadable as a pen.)
-  g.rotation.z=THREE.MathUtils.damp(g.rotation.z,focused?-.34:-1.52,8,dt);
-  g.rotation.x=THREE.MathUtils.damp(g.rotation.x,focused?.40:.1,8,dt)});
- return <group ref={group} scale={.38} position={[1.65,-3.08,1.55]} rotation={[.1,0,-1.52]}>
-  <mesh geometry={nib} position-z={-.007} castShadow><meshStandardMaterial color="#dde1e6" metalness={.95} roughness={.2} envMapIntensity={1.3}/></mesh>
-  <mesh position={[0,.32,-.034]} castShadow><boxGeometry args={[.085,.34,.02]}/><meshStandardMaterial color="#17120e" roughness={.6}/></mesh>
-  <mesh position-y={.64} castShadow><cylinderGeometry args={[.058,.07,.30,14]}/><meshStandardMaterial color="#2e1c10" roughness={.38}/></mesh>
-  <mesh position-y={1.44} castShadow><cylinderGeometry args={[.05,.07,1.3,16]}/><meshPhysicalMaterial color="#46241a" roughness={.26} clearcoat={.65} clearcoatRoughness={.25}/></mesh>
-  <mesh position-y={2.02} rotation-x={Math.PI/2}><torusGeometry args={[.058,.011,8,20]}/><meshStandardMaterial color="#9a885d" metalness={.8} roughness={.35}/></mesh>
-  <mesh position-y={2.1} scale={[1,.45,1]}><sphereGeometry args={[.05,14,10]}/><meshPhysicalMaterial color="#46241a" roughness={.26} clearcoat={.65} clearcoatRoughness={.25}/></mesh>
+  g.rotation.z=THREE.MathUtils.damp(g.rotation.z,focused?-.42:-1.52,8,dt);
+  g.rotation.x=THREE.MathUtils.damp(g.rotation.x,focused?.55:.1,8,dt)});
+ return <group ref={group} scale={.5} position={[1.65,-3.08,1.55]} rotation={[.1,0,-1.52]}>
+  <mesh geometry={nib} position-z={-.008} castShadow><meshStandardMaterial color="#dde1e6" metalness={.95} roughness={.2} envMapIntensity={1.3}/></mesh>
+  <mesh position={[0,.36,-.038]} castShadow><boxGeometry args={[.13,.38,.024]}/><meshStandardMaterial color="#17120e" roughness={.6}/></mesh>
+  <mesh position-y={.69} castShadow><cylinderGeometry args={[.075,.095,.34,16]}/><meshStandardMaterial color="#2e1c10" roughness={.38}/></mesh>
+  <mesh position-y={.88} rotation-x={Math.PI/2}><torusGeometry args={[.098,.015,10,24]}/><meshStandardMaterial color="#9a885d" metalness={.85} roughness={.3} envMapIntensity={1.2}/></mesh>
+  <mesh position-y={1.48} castShadow><cylinderGeometry args={[.088,.10,1.25,18]}/><meshPhysicalMaterial color="#46241a" roughness={.18} clearcoat={1} clearcoatRoughness={.18}/></mesh>
+  <mesh position-y={2.12} scale={[1,.45,1]}><sphereGeometry args={[.088,16,12]}/><meshPhysicalMaterial color="#46241a" roughness={.18} clearcoat={1} clearcoatRoughness={.18}/></mesh>
  </group>
 }
 export function Candle(){
