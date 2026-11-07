@@ -95,7 +95,7 @@ function InkwellProp(){
  // dressing only; nothing dips, nothing meters. Right of the board.
  const [scene,setScene]=useState(null);
  useEffect(()=>{let live=true;loadInkwellScene().then(s=>{if(live)setScene(s)});return()=>{live=false}},[]);
- return <group position={[2.55,-3.15,0.15]}>
+ return <group position={[3.02,-3.15,.8]}>
   <ShadowBlob position={[0,.012,0]} rotation={[-Math.PI/2,0,0]} scale={[1.1,1,1]} opacity={.3}/>
   {scene&&<primitive object={scene}/>}
  </group>
@@ -109,7 +109,7 @@ function BookProp(){
  const[scene,setScene]=useState(null);
  useEffect(()=>{let on=true;loadBookScene().then(sc=>{if(on)setScene(sc)});return()=>{on=false}},[]);
  if(!scene)return null;
- return <group position={[2.72,-3.15,-1.78]} rotation={[0,-.3,0]}>
+ return <group position={[3.3,-3.15,-1.15]} rotation={[0,-.3,0]}>
   <ShadowBlob position={[0,.012,0]} rotation={[-Math.PI/2,0,-.3]} scale={[2.5,1.8,1]} opacity={.28}/>
   <primitive object={scene}/>
  </group>
