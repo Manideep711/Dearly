@@ -5,6 +5,7 @@ import {clone} from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three';
 import {createPigeonClips} from './pigeon-clips';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+import {useCapsuleParts} from './capsule';
 // Staging helpers: a soft radial texture (contact shadow / light pool),
 // a procedural room environment so brass and feathers have something
 // real to reflect, and a graded backdrop instead of a flat void.
@@ -20,7 +21,7 @@ function ContactShadow({phase}){const mat=useRef();const tex=useMemo(()=>radialT
  return <mesh position={[0,.012,0]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[.95,32]}/><meshBasicMaterial ref={mat} map={tex} transparent opacity={0} depthWrite={false}/></mesh>}
 function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,onFed,onCapsule,capsuleTarget,onHover}){
  const gltf=useLoader(GLTFLoader,import.meta.env.BASE_URL+'models/pigeon.glb');
- const feedingAction=useRef(),feedCycle=useRef(-1),emptyTime=useRef(0),feedingDone=useRef(false),lift=useRef(0);const capsuleRef=useRef();const root=useRef(),clock=useRef(0),previous=useRef(),bitten=useRef(false);
+ const feedingAction=useRef(),feedCycle=useRef(-1),emptyTime=useRef(0),feedingDone=useRef(false),lift=useRef(0);const capsuleRef=useRef();const legParts=useCapsuleParts();const root=useRef(),clock=useRef(0),previous=useRef(),bitten=useRef(false);
  const {bird,mixer,clips,fit}=useMemo(()=>{const bird=clone(gltf.scene);bird.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;if(o.name==='poopMesh_Pigeon_mainMat_0')o.visible=false;const mats=Array.isArray(o.material)?o.material:[o.material];o.material=mats.map(m=>{const c=m.clone();if(c.name==='Pigeon_mainMat'){c.transparent=false;c.alphaTest=.45;c.depthWrite=true;c.side=THREE.DoubleSide}return c});if(!Array.isArray(gltf.scene.getObjectByName(o.name)?.material))o.material=o.material[0]}});bird.updateMatrixWorld(true);const b=new THREE.Box3().setFromObject(bird),size=b.getSize(new THREE.Vector3()),center=b.getCenter(new THREE.Vector3());return{bird,mixer:new THREE.AnimationMixer(bird),clips:createPigeonClips(gltf.animations[0]),fit:{scale:2.5/Math.max(size.x,size.y,size.z),center,min:b.min.y,size}}},[gltf]);
  const pileTex=useMemo(()=>radialTexture([[0,'rgba(0,0,0,.42)'],[1,'rgba(0,0,0,0)']]),[]);
  const livingPose=useMemo(()=>({
@@ -139,8 +140,7 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
  });
  return <group ref={root}><group scale={fit.scale} rotation-y={-.35} position={[-fit.center.x*fit.scale,-fit.min*fit.scale,-fit.center.z*fit.scale]}><primitive object={bird} onPointerOver={e=>{e.stopPropagation();onHover('bird')}} onPointerOut={()=>onHover(null)} onClick={e=>{e.stopPropagation();onReact(e.clientX,e.clientY)}}/>
 <group ref={capsuleRef} onClick={e=>{e.stopPropagation();if(phase==='ready')onCapsule();else onReact(e.clientX,e.clientY)}} onPointerOver={e=>{e.stopPropagation();onHover('capsule')}} onPointerOut={()=>onHover(null)}>
-<mesh castShadow receiveShadow><cylinderGeometry args={[legR,legR,legR*5.2,28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>
-{[-2.35,2.35].map(y=><mesh key={'r'+y} position={[0,y*legR,0]} rotation-x={Math.PI/2} castShadow><torusGeometry args={[legR*1.03,legR*.11,8,28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>)}
+<group rotation-z={Math.PI/2} scale={legR*4.95}>{legParts&&<primitive object={legParts.body}/>}{legParts&&<primitive object={legParts.cap}/>}</group>
 {[-1.3,1.3].map(y=><mesh key={'s'+y} position={[-legR*.95,y*legR,0]} rotation-x={Math.PI/2} scale-x={1.4} castShadow><torusGeometry args={[legR*1.5,legR*.17,8,36]}/><meshStandardMaterial color="#765132" roughness={.9} side={THREE.DoubleSide}/></mesh>)}
 </group>{seeds.some(seed=>seed.grains>0)&&<mesh position={[feedingSpot.point.x,feedingSpot.point.y+.0015,feedingSpot.point.z]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[.03/fit.scale*9,24]}/><meshBasicMaterial map={pileTex} transparent opacity={.5} depthWrite={false}/></mesh>}{seeds.filter(seed=>seed.grains>0).map((seed,i)=><Seed key={seed.id} id={seed.id} point={feedingSpot.point} index={i} size={.03/fit.scale} grainsLeft={seed.grains}/>)}</group></group>
 }
@@ -168,7 +168,7 @@ function DeliveryCamera({phase,zoom,capsuleTarget}){
   camera.position.lerp(position,easing);target.current.lerp(aim,easing);camera.lookAt(target.current);
  });return null;
 }
-function Capsule(){const cap=useRef();useFrame((_,dt)=>{cap.current.position.y=THREE.MathUtils.lerp(cap.current.position.y,.65,1-Math.exp(-dt*2))});return <group position={[0,.9,0]} rotation={[0,0,-.45]}><mesh><cylinderGeometry args={[.16,.16,.8,40]}/><meshStandardMaterial color="#9c8057" metalness={.65} roughness={.5}/></mesh><mesh ref={cap} position-y={.43}><cylinderGeometry args={[.175,.175,.12,40]}/><meshStandardMaterial color="#a88b5d" metalness={.65} roughness={.5}/></mesh><mesh position-y={.46}><cylinderGeometry args={[.105,.105,.65,40]}/><meshStandardMaterial color="#d3c5a3" roughness={1}/></mesh></group>}
+function Capsule(){const cap=useRef();const parts=useCapsuleParts();useFrame((_,dt)=>{if(cap.current)cap.current.position.x=THREE.MathUtils.lerp(cap.current.position.x,.55,1-Math.exp(-dt*2))});return <group position={[0,.9,0]} rotation={[0,0,-.45]}><group rotation-z={Math.PI/2}>{parts&&<primitive object={parts.body}/>}<mesh position-x={.16} rotation-z={Math.PI/2}><cylinderGeometry args={[.09,.09,.55,24]}/><meshStandardMaterial color="#d3c5a3" roughness={1}/></mesh><group ref={cap}>{parts&&<primitive object={parts.cap}/>}</group></group></group>}
 export default function PigeonDelivery({onOpen,onWrite}){
  const[phase,setPhase]=useState('arrival'),[seeds,setSeeds]=useState([]),[reaction,setReaction]=useState(0);
  const[fullness,setFullness]=useState(0),[unlocked,setUnlocked]=useState(false),[zoom,setZoom]=useState(0),[hover,setHover]=useState(null),[pet,setPet]=useState(null);
@@ -235,7 +235,7 @@ export default function PigeonDelivery({onOpen,onWrite}){
  {phase==='ready'&&<><button onClick={()=>setZoom(z=>z<.8?1:0)}>{zoom<.8?'Look closer at its leg':'View the pigeon'}</button><button className="capsule-keyboard" onClick={onOpen} aria-label="Open the brass capsule on the pigeon leg">Open leg capsule</button></>}
  </div>
  {phase==='ready'?<p>Scroll to look closer. Click the brass capsule on its leg.</p>:['waiting','feeding'].includes(phase)&&<p>Tap the ground to feed it. Stroke the pigeon with a click.</p>}
- <div className="bird-credit">Pigeon by <a href="https://sketchfab.com/LostModels2025" target="_blank" rel="noreferrer">LostBoyz2078</a> · <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noreferrer">CC BY-NC 4.0</a> · materials adapted</div>
+ <div className="bird-credit">Pigeon by <a href="https://sketchfab.com/LostModels2025" target="_blank" rel="noreferrer">LostBoyz2078</a> · <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noreferrer">CC BY-NC 4.0</a> · materials adapted · Capsule by <a href="https://sketchfab.com/dennish2010" target="_blank" rel="noreferrer">3DHaupt</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a> · restyled</div>
  </div>{pet&&<div key={pet.key} className="pet-stroke" style={{left:pet.x,top:pet.y}} aria-hidden="true"><svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M24 54c-5-8-13-15-13-20 0-4 4-5 7-1l5 6V13c0-5 6-5 6 0v17-21c0-5 6-5 6 0v21-17c0-5 6-5 6 0v19-12c0-5 6-5 6 0v20c0 7-3 11-5 14"/><path d="M6 16l-3-3M49 7l3-4M54 23h5"/></svg></div>}</div>
 }
 

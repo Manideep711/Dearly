@@ -9,6 +9,7 @@ import {useSurface} from './physical';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import './sender-send.css';
 import {WAX_COLORS, WAX_DIES, drawWaxSeal, scrollSealOf, makeWaxSealTexture, buildSealPatch} from './wax-seal';
+import {useCapsuleParts} from './capsule';
 
 function SendEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
  useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.3;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
@@ -33,8 +34,8 @@ const LETTER_FLAT = new THREE.Vector3(-1.55, -.3, 0);
 const CAPSULE_POS = new THREE.Vector3(.55, -1.15, .3); // rests clear of the landing spot
 const SCROLL_POS = new THREE.Vector3(-.8, -1.15, .3);  // rolled letter waits at the capsule's mouth
 const BIRD_LAND = new THREE.Vector3(2.35, 0, -.35);
-const CAP_OPEN = new THREE.Vector3(-.25, -.6, .15);    // cap rests on the desk, below the mouth
-const CAP_SHUT = new THREE.Vector3(-.66, 0, 0);        // cap clicked onto the entry (left) end
+const CAP_OPEN = new THREE.Vector3(.25, -.6, -.15);    // cap rests on the desk, below the mouth (model space — the rig flips the model so its cap faces -X)
+const CAP_SHUT = new THREE.Vector3(0, 0, 0);           // cap home: clicked onto the entry (left) end
 
 function RollingLetter({texture, phase, sealing, sealT0, manualRoll, onRolled, seal}) {
   // The wax seal rides the letter group itself, bent around the coil
@@ -113,6 +114,7 @@ function RollingLetter({texture, phase, sealing, sealT0, manualRoll, onRolled, s
 
 function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
   const group = useRef(), cap = useRef();
+  const parts = useCapsuleParts();
   useFrame(() => {
     const g = group.current; if (!g) return;
     const show = (phase === 'stamp' || phase === 'capsule' || phase === 'arrival' || phase === 'attach') && !attached;
@@ -137,19 +139,19 @@ function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
       if (cap.current.position.distanceTo(target) < .004) cap.current.position.copy(target);
     }
   });
-  const brass = {color: '#b08d57', metalness: .65, roughness: .42};
   return <group ref={group} position={CAPSULE_POS.toArray()} visible={false}>
-    <mesh rotation-z={Math.PI / 2}><cylinderGeometry args={[.145, .145, 1.05, 36]}/><meshStandardMaterial {...brass}/></mesh>
-    <mesh position-x={.53} rotation-z={Math.PI / 2}><torusGeometry args={[.145, .018, 10, 36]}/><meshStandardMaterial {...brass}/></mesh>
-    <mesh position-x={-.53} rotation-z={Math.PI / 2}><torusGeometry args={[.145, .018, 10, 36]}/><meshStandardMaterial {...brass}/></mesh>
-    <group ref={cap} position={CAP_OPEN.toArray()}>
-      <mesh rotation-z={Math.PI / 2}><cylinderGeometry args={[.16, .16, .22, 36]}/><meshStandardMaterial color="#bd9a63" metalness={.65} roughness={.48}/></mesh>
+    <group rotation-y={Math.PI}>
+      {parts && <primitive object={parts.body}/>}
+      <group ref={cap} position={CAP_OPEN.toArray()}>
+        {parts && <primitive object={parts.cap}/>}
+      </group>
     </group>
   </group>;
 }
 
 function SenderBird({phase, attached, onLanded, legTarget}) {
   const gltf = useLoader(GLTFLoader, import.meta.env.BASE_URL + 'models/pigeon.glb');
+  const legParts = useCapsuleParts();
   const root = useRef(), clock = useRef(0), state = useRef('');
   const {bird, mixer, clips, fit} = useMemo(() => {
     const bird = clone(gltf.scene);
@@ -250,8 +252,10 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
   });
   return <group ref={root} visible={false}><group scale={fit.scale} rotation-y={-.9} position={[-fit.center.x * fit.scale, -fit.min * fit.scale, -fit.center.z * fit.scale]}><primitive object={bird}/>
     <group ref={legCapsuleRef} visible={attached}>
-      <mesh><cylinderGeometry args={[legR, legR, legR * 5.2, 28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>
-      {[-2.35, 2.35].map(y => <mesh key={'r' + y} position={[0, y * legR, 0]} rotation-x={Math.PI / 2}><torusGeometry args={[legR * 1.03, legR * .11, 8, 28]}/><meshStandardMaterial color="#c9a45c" metalness={.85} roughness={.32}/></mesh>)}
+      <group rotation-z={Math.PI / 2} scale={legR * 4.95}>
+        {legParts && <primitive object={legParts.body}/>}
+        {legParts && <primitive object={legParts.cap}/>}
+      </group>
       {[-1.3, 1.3].map(y => <mesh key={'s' + y} position={[-legR * .95, y * legR, 0]} rotation-x={Math.PI / 2} scale-x={1.4}><torusGeometry args={[legR * 1.5, legR * .17, 8, 36]}/><meshStandardMaterial color="#765132" roughness={.9} side={THREE.DoubleSide}/></mesh>)}
     </group>
   </group></group>;
