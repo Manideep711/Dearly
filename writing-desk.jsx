@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {PEN_GLB_B64} from './pen-model';
+import {INKWELL_GLB_B64} from './inkwell-model';
+import {BOOK_GLB_B64} from './book-model';
 import {useLetterTexture} from './letter-render';
 import {layoutLetter,PAGE,faceFont} from './letter-layout';
 import TypewriterDesk from './typewriter';
@@ -72,6 +74,75 @@ function Pen({tip,focused,pulse}){
 
 
 
+let blobTex=null;
+function shadowTex(){if(!blobTex){const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');const g=x.createRadialGradient(64,64,4,64,64,62);g.addColorStop(0,'rgba(0,0,0,0.85)');g.addColorStop(.6,'rgba(0,0,0,0.38)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(0,0,128,128);blobTex=new THREE.CanvasTexture(c)}return blobTex}
+function ShadowBlob({position,rotation,scale,opacity}){
+ return <mesh position={position} rotation={rotation} scale={scale} renderOrder={2}><planeGeometry args={[1,1]}/><meshBasicMaterial map={shadowTex()} transparent opacity={opacity} depthWrite={false}/></mesh>
+}
+let inkwellScenePromise=null;
+function loadInkwellScene(){
+ if(!inkwellScenePromise){
+  const bin=atob(INKWELL_GLB_B64);const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([bytes],{type:'model/gltf-binary'}));
+  inkwellScenePromise=new GLTFLoader().loadAsync(url).then(g=>{
+   g.scene.traverse(o=>{if(o.isMesh)o.castShadow=true});return g.scene});
+ }
+ return inkwellScenePromise;
+}
+function InkwellProp(){
+ // The dip pen's own ink pot and its cork, from the same set — set
+ // dressing only; nothing dips, nothing meters. Right of the board.
+ const [scene,setScene]=useState(null);
+ useEffect(()=>{let live=true;loadInkwellScene().then(s=>{if(live)setScene(s)});return()=>{live=false}},[]);
+ return <group position={[2.55,-3.15,0.15]}>
+  <ShadowBlob position={[0,.012,0]} rotation={[-Math.PI/2,0,0]} scale={[1.1,1,1]} opacity={.3}/>
+  {scene&&<primitive object={scene}/>}
+ </group>
+}
+let bookScenePromise=null;
+function loadBookScene(){
+ if(!bookScenePromise){const bytes=Uint8Array.from(atob(BOOK_GLB_B64),c=>c.charCodeAt(0));const url=URL.createObjectURL(new Blob([bytes],{type:'model/gltf-binary'}));bookScenePromise=new GLTFLoader().loadAsync(url).then(g=>{g.scene.traverse(o=>{if(o.isMesh)o.castShadow=true});return g.scene})}
+ return bookScenePromise;
+}
+function BookProp(){
+ const[scene,setScene]=useState(null);
+ useEffect(()=>{let on=true;loadBookScene().then(sc=>{if(on)setScene(sc)});return()=>{on=false}},[]);
+ if(!scene)return null;
+ return <group position={[2.72,-3.15,-1.78]} rotation={[0,-.3,0]}>
+  <ShadowBlob position={[0,.012,0]} rotation={[-Math.PI/2,0,-.3]} scale={[2.5,1.8,1]} opacity={.28}/>
+  <primitive object={scene}/>
+ </group>
+}
+function SheetsStack(){
+ // A small pile of spare sheets at the back-left of the table, each
+ // a hair askew, one loose sheet on top — a desk with paper waiting.
+ const sheets=[...Array(6)].map((_,i)=>({y:-3.148+i*.017,rz:.16+(i%2?.014:-.011),x:-2.7+(i%3-1)*.02,z:-1.9+(i%2?.02:-.015)}));
+ return <group>
+  <ShadowBlob position={[-2.7,-3.142,-1.9]} rotation={[-Math.PI/2,0,.16]} scale={[3.9,4.9,1]} opacity={.26}/>
+  {sheets.map((s,i)=><mesh key={i} position={[s.x,s.y,s.z]} rotation-y={s.rz} receiveShadow castShadow><boxGeometry args={[3.35,.014,4.36]}/><meshStandardMaterial color={i===5?'#efe7d0':'#e7dcc0'} roughness={.95}/></mesh>)}
+  <mesh position={[-2.6,-3.148+6*.017+.008,-1.8]} rotation-y={.44} receiveShadow castShadow><boxGeometry args={[3.35,.014,4.36]}/><meshStandardMaterial color="#f2ead6" roughness={.95}/></mesh>
+ </group>
+}
+function CaretShadow({slope,tip,focused}){
+ // A soft pool of shade on the paper wherever the nib is working, so
+ // the pen touches the sheet instead of hovering over it.
+ const m=useRef(),o=useRef(0);
+ useFrame((_,dt)=>{const mesh=m.current;if(!mesh||!slope.current)return;
+  const q=slope.current.getWorldQuaternion(new THREE.Quaternion());
+  mesh.quaternion.copy(q).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),.4));
+  mesh.position.copy(tip.current).addScaledVector(new THREE.Vector3(0,0,1).applyQuaternion(q),.02);
+  o.current=THREE.MathUtils.damp(o.current,focused?.34:0,10,dt);
+  mesh.material.opacity=o.current;mesh.visible=o.current>.01});
+ return <mesh ref={m} renderOrder={3} visible={false}><planeGeometry args={[.44,.3]}/><meshBasicMaterial map={shadowTex()} transparent opacity={0} depthWrite={false}/></mesh>
+}
+function RestShadow({focused}){
+ const m=useRef(),o=useRef(.3);
+ useFrame((_,dt)=>{const mesh=m.current;if(!mesh)return;
+  o.current=THREE.MathUtils.damp(o.current,focused?0:.3,8,dt);
+  mesh.material.opacity=o.current;mesh.visible=o.current>.01});
+ return <mesh ref={m} position={[1.65,-3.138,1.55]} rotation={[-Math.PI/2,0,0]} renderOrder={2}><planeGeometry args={[1.25,.36]}/><meshBasicMaterial map={shadowTex()} transparent opacity={.3} depthWrite={false}/></mesh>
+}
 export function Candle(){
  const flame=useRef(),glow=useRef(),light=useRef(),t=useRef(7);
  const glowTex=useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');const g=x.createRadialGradient(64,64,2,64,64,64);g.addColorStop(0,'rgba(255,190,110,.85)');g.addColorStop(.4,'rgba(255,150,60,.28)');g.addColorStop(1,'rgba(255,140,50,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return new THREE.CanvasTexture(c)},[]);
@@ -194,7 +265,7 @@ function DeskScene({letter,onMetrics,onBounds,onFocus,caret,focused,pulse,mode,l
   // the paper while it moves.
   if((settled&&key!==lastKey.current)||camera.position.distanceTo(lastRep.current)>.3){if(settled)lastKey.current=key;lastRep.current.copy(camera.position);const sl=slope.current;if(sl){sl.updateMatrixWorld(true);onBounds({corners:[[-PW/2,PH/2],[PW/2,PH/2],[PW/2,-PH/2],[-PW/2,-PH/2]].map(([x,y])=>{const q=sl.localToWorld(new THREE.Vector3(x,y,0)).project(camera);return [(q.x+1)*size.width/2,(1-q.y)*size.height/2]})})}}});
  useEffect(()=>()=>{geometry.dispose();wood.dispose()},[geometry,wood]);
- return <><color attach="background" args={[mode==='lamp'?'#e9dfc9':'#0d0b08']}/><DeskEnv/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><directionalLight position={mode==='lamp'?[-4,3,5]:[-5,1.5,5]} intensity={mode==='lamp'?.55:1.15} color="#ffb066" castShadow shadow-mapSize={[512,512]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} roughness={.94} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle} head={lampHead} onHead={onLampHead}/>:<Candle/>}<Pen tip={tip} focused={focused} pulse={pulse}/></>
+ return <><color attach="background" args={[mode==='lamp'?'#e9dfc9':'#0d0b08']}/><DeskEnv/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><directionalLight position={mode==='lamp'?[-4,3,5]:[-5,1.5,5]} intensity={mode==='lamp'?.55:1.15} color="#ffb066" castShadow shadow-mapSize={[512,512]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} roughness={.94} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle} head={lampHead} onHead={onLampHead}/>:<Candle/>}<Pen tip={tip} focused={focused} pulse={pulse}/><InkwellProp/><BookProp/><SheetsStack/><CaretShadow slope={slope} tip={tip} focused={focused}/><RestShadow focused={focused}/></>
 }
 // The choice of desk, shown high in both rooms so it is the first thing a
 // writer meets - the old switch sat at the end of the actions row, below
@@ -290,7 +361,7 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  
  </div><section className="atelier-controls">{lightMode==='lamp'&&<div className="atelier-spacing"><label>Lamp angle <input type="range" aria-label="Lamp angle" min="-32" max="40" step="1" value={lampAngle} onChange={e=>setLampAngle(Number(e.target.value))}/></label><label>Lamp head <input type="range" aria-label="Lamp head tilt" min="-45" max="45" step="1" value={lampHead} onChange={e=>setLampHead(Number(e.target.value))}/></label><span>tip: drag the lamp to swing it, drag the shade itself to tilt it</span></div>}<div className="atelier-spacing"><label>Letter size <input type="range" aria-label="Letter size" min="32" max="88" step="2" value={letter.fontSize||72} onChange={e=>onChange({...letter,fontSize:Number(e.target.value)})}/></label><label>Line spacing <input type="range" aria-label="Line spacing" min="1.28" max="1.8" step=".05" value={letter.lineSpacing||1.35} onChange={e=>onChange({...letter,lineSpacing:Number(e.target.value)})}/></label><span>{metrics?.fill||0}% of the page</span></div>
  {metrics?.overflow&&<p role="status" className="atelier-overflow">Your words extend beyond this sheet. <button onClick={fit}>Fit to the page</button></p>}
- <div className="atelier-actions"><button onClick={()=>setSigning(v=>!v)}>Sign by hand</button><button onClick={()=>setPlain(v=>!v)}>Edit text</button><button onClick={toggleSound} aria-pressed={soundOn}>{soundOn?'Sound on':'Sound off'}</button><button onClick={toggleLight} aria-pressed={lightMode==='lamp'}>{lightMode==='lamp'?'Lamplight':'Candlelight'}</button><button className="primary" disabled={!letter.body.trim()||metrics?.overflow} onClick={onPreview}>Hold your letter ↗</button></div><p className="atelier-hint">Click the paper to write. Your layout carries through to the finished letter.</p><p className="pen-credit">Pen based on <a href="https://sketchfab.com/3d-models/book-inkwell-and-fountain-pen-519506e44002488dbba8b78e7b9d3ac6" target="_blank" rel="noreferrer">“Book, inkwell and fountain pen”</a> by <a href="https://sketchfab.com/Karosio" target="_blank" rel="noreferrer">Karosio</a> · <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0</a></p>
+ <div className="atelier-actions"><button onClick={()=>setSigning(v=>!v)}>Sign by hand</button><button onClick={()=>setPlain(v=>!v)}>Edit text</button><button onClick={toggleSound} aria-pressed={soundOn}>{soundOn?'Sound on':'Sound off'}</button><button onClick={toggleLight} aria-pressed={lightMode==='lamp'}>{lightMode==='lamp'?'Lamplight':'Candlelight'}</button><button className="primary" disabled={!letter.body.trim()||metrics?.overflow} onClick={onPreview}>Hold your letter ↗</button></div><p className="atelier-hint">Click the paper to write. Your layout carries through to the finished letter.</p><p className="pen-credit">Book, inkwell & pen from <a href="https://sketchfab.com/3d-models/book-inkwell-and-fountain-pen-519506e44002488dbba8b78e7b9d3ac6" target="_blank" rel="noreferrer">“Book, inkwell and fountain pen”</a> by <a href="https://sketchfab.com/Karosio" target="_blank" rel="noreferrer">Karosio</a> · <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0</a></p>
  </section>{plain&&<section className="atelier-editor"><label>Your words<textarea aria-label="Plain text editor" value={letter.body} maxLength={1500} onChange={e=>{prevBody.current=e.target.value;onChange({...letter,body:e.target.value})}}/></label><button onClick={()=>setPlain(false)}>Return to the desk</button></section>}
  {signing&&<section className="signature-panel"><p>A signature only you could make.</p><svg className="signature-pad" aria-label="Draw your signature" role="img" viewBox="0 0 480 130" onPointerDown={start} onPointerMove={move} onPointerUp={()=>{pen.current=false;onChange({...letter,signature:signatureDraft.current});setSignaturePreview(null)}} onPointerCancel={()=>{pen.current=false;setSignaturePreview(null)}}>{(signaturePreview||letter.signature||[]).map((s,i)=><path key={i} d={s.map((p,j)=>`${j?'L':'M'}${p[0]} ${p[1]}`).join(' ')} stroke="#39352e" strokeWidth="1.5" fill="none" strokeLinecap="round"/>)}</svg><button onClick={()=>onChange({...letter,signature:[]})}>Clear signature</button><button onClick={()=>setSigning(false)}>Keep signature</button></section>}
  </main>
