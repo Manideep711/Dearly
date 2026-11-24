@@ -1,11 +1,12 @@
 import React,{Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {AdaptiveResolution,LazyShadows} from './render-budget';
 import {Canvas,useFrame,useThree} from '@react-three/fiber';
 import * as THREE from 'three';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {PEN_GLB_B64} from './pen-model';
-import {INKWELL_GLB_B64} from './inkwell-model';
-import {BOOK_GLB_B64} from './book-model';
+import {loadModel} from './model-loader';
+import {walnutMaps,paperGrain} from './surfaces';
+import {EffectComposer,Bloom,ToneMapping} from '@react-three/postprocessing';
+import {ToneMappingMode} from 'postprocessing';
 import {useLetterTexture} from './letter-render';
 import {layoutLetter,PAGE,faceFont} from './letter-layout';
 import TypewriterDesk from './typewriter';
@@ -31,7 +32,8 @@ export function quadTransform(w,h,pts){
  const sv=A.map((r,i)=>b[i]/(r[i]||1e-9)),[a,bb,cc,d,e,f,g,hh]=sv;
  return `matrix3d(${a},${d},0,${g},${bb},${e},0,${hh},0,0,1,0,${cc},${f},0,1)`;
 }
-export function useWood(){return useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=1024;const x=c.getContext('2d');x.fillStyle='#231e18';x.fillRect(0,0,1024,1024);let seed=12;const rand=()=>{seed=seed*16807%2147483647;return seed/2147483647};for(let i=0;i<5500;i++){const y=rand()*1024;x.strokeStyle=`rgba(${rand()>.5?'100,76,49':'8,5,3'},${rand()*.035})`;x.lineWidth=.3+rand()*2;x.beginPath();x.moveTo(0,y);for(let a=0;a<=1024;a+=30)x.lineTo(a,y+Math.sin(a*.013+y)*3+Math.sin(a*.004)*8);x.stroke()}for(let y=0;y<1024;y+=256){x.fillStyle='#080604';x.fillRect(0,y,1024,2)}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(2,2);t.colorSpace=THREE.SRGBColorSpace;return t},[])}
+// Walnut planks for the table top (see surfaces.js).
+export function useWood(){return walnutMaps(2)}
 const RESTV=new THREE.Vector3(1.65,-3.08,1.55);
 // The desk scene needs an environment map or its metals lie: a
 // metalness-.95 nib with nothing to reflect renders as a black blob
@@ -39,17 +41,7 @@ const RESTV=new THREE.Vector3(1.65,-3.08,1.55);
 // reason). Kept faint so the candlelit mood does not lift.
 function DeskEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
  useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.35;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
-let penScenePromise=null;
-function loadPenScene(){
- if(!penScenePromise){
-  const bin=atob(PEN_GLB_B64);const bytes=new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
-  const url=URL.createObjectURL(new Blob([bytes],{type:'model/gltf-binary'}));
-  penScenePromise=new GLTFLoader().loadAsync(url).then(g=>{
-   g.scene.traverse(o=>{if(o.isMesh)o.castShadow=true});return g.scene});
- }
- return penScenePromise;
-}
+const loadPenScene=()=>loadModel('pen.glb');
 function Pen({tip,focused,pulse}){
  const group=useRef();
  // Karosio's antique dip pen, a real model in place of the procedural
@@ -79,17 +71,7 @@ function shadowTex(){if(!blobTex){const c=document.createElement('canvas');c.wid
 function ShadowBlob({position,rotation,scale,opacity}){
  return <mesh position={position} rotation={rotation} scale={scale} renderOrder={2}><planeGeometry args={[1,1]}/><meshBasicMaterial map={shadowTex()} transparent opacity={opacity} depthWrite={false}/></mesh>
 }
-let inkwellScenePromise=null;
-function loadInkwellScene(){
- if(!inkwellScenePromise){
-  const bin=atob(INKWELL_GLB_B64);const bytes=new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
-  const url=URL.createObjectURL(new Blob([bytes],{type:'model/gltf-binary'}));
-  inkwellScenePromise=new GLTFLoader().loadAsync(url).then(g=>{
-   g.scene.traverse(o=>{if(o.isMesh)o.castShadow=true});return g.scene});
- }
- return inkwellScenePromise;
-}
+const loadInkwellScene=()=>loadModel('inkwell.glb');
 function InkwellProp(){
  // The dip pen's own ink pot and its cork, from the same set — set
  // dressing only; nothing dips, nothing meters. Right of the board.
@@ -100,11 +82,7 @@ function InkwellProp(){
   {scene&&<primitive object={scene}/>}
  </group>
 }
-let bookScenePromise=null;
-function loadBookScene(){
- if(!bookScenePromise){const bytes=Uint8Array.from(atob(BOOK_GLB_B64),c=>c.charCodeAt(0));const url=URL.createObjectURL(new Blob([bytes],{type:'model/gltf-binary'}));bookScenePromise=new GLTFLoader().loadAsync(url).then(g=>{g.scene.traverse(o=>{if(o.isMesh)o.castShadow=true});return g.scene})}
- return bookScenePromise;
-}
+const loadBookScene=()=>loadModel('book.glb');
 function BookProp(){
  const[scene,setScene]=useState(null);
  useEffect(()=>{let on=true;loadBookScene().then(sc=>{if(on)setScene(sc)});return()=>{on=false}},[]);
@@ -143,24 +121,51 @@ function RestShadow({focused}){
   mesh.material.opacity=o.current;mesh.visible=o.current>.01});
  return <mesh ref={m} position={[1.65,-3.138,1.55]} rotation={[-Math.PI/2,0,0]} renderOrder={2}><planeGeometry args={[1.25,.36]}/><meshBasicMaterial map={shadowTex()} transparent opacity={.3} depthWrite={false}/></mesh>
 }
+// One flicker signal for the whole room: the flame's shape, its glow
+// and the warm key light that throws the desk's shadows all breathe
+// together, so shadows tremble with the candle like they do in life.
+export function candleFlicker(t){return Math.sin(t*2.9)*.5+Math.sin(t*5.3+1.3)*.3+Math.sin(t*9.7+.5)*.2+Math.sin(t*17.3+2.1)*.06}
+// The room behind the desk: an old plaster wall the candle reaches
+// faintly. Without it the top of every frame was a flat black void.
+function BackWall({mode}){
+ const plaster=useMemo(()=>paperGrain(6),[]);
+ return <mesh position={[0,6,-9]} receiveShadow><planeGeometry args={[70,34]}/><meshStandardMaterial color={mode==='lamp'?'#3b2f22':'#2e241a'} roughness={1} bumpMap={plaster} bumpScale={2.5}/></mesh>;
+}
+// Lens bloom: only true light sources (the flame core and the lamp
+// bulb, both pushed above 1.0 and left un-tonemapped) cross the
+// threshold, so they glow the way bright light does through a camera
+// while the paper and wood stay crisp. Tone mapping moves into the
+// effect chain (ACES, as before). Skipped on small screens to spare
+// phones the extra passes.
+function DeskPost(){
+ const size=useThree(s=>s.size);
+ if(size.width<700)return null;
+ return <EffectComposer multisampling={4}><Bloom mipmapBlur luminanceThreshold={1} luminanceSmoothing={.15} intensity={.9} radius={.7}/><ToneMapping mode={ToneMappingMode.ACES_FILMIC}/></EffectComposer>;
+}
+function CandleKey({mode}){
+ const light=useRef();
+ useFrame(({clock})=>{if(light.current&&mode!=='lamp')light.current.intensity=1.15+candleFlicker(clock.elapsedTime+7)*.09});
+ return <directionalLight ref={light} position={mode==='lamp'?[-4,3,5]:[-5,1.5,5]} intensity={mode==='lamp'?.55:1.15} color="#ffb066" castShadow shadow-mapSize={[1024,1024]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.0015}/>;
+}
 export function Candle(){
- const flame=useRef(),glow=useRef(),light=useRef(),t=useRef(7);
+ const flame=useRef(),glow=useRef(),light=useRef(),wax=useRef();
  const glowTex=useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');const g=x.createRadialGradient(64,64,2,64,64,64);g.addColorStop(0,'rgba(255,190,110,.85)');g.addColorStop(.4,'rgba(255,150,60,.28)');g.addColorStop(1,'rgba(255,140,50,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return new THREE.CanvasTexture(c)},[]);
  useEffect(()=>()=>glowTex.dispose(),[glowTex]);
- useFrame((_,dt)=>{t.current+=dt;const n=Math.sin(t.current*2.9)*.5+Math.sin(t.current*5.3+1.3)*.3+Math.sin(t.current*9.7+.5)*.2;
+ useFrame(({clock})=>{const n=candleFlicker(clock.elapsedTime+7);if(wax.current)wax.current.emissiveIntensity=.22+n*.05;
   if(light.current)light.current.intensity=6+n*.7;
   if(flame.current){flame.current.scale.set(1-n*.04,1+n*.1,1);flame.current.rotation.z=n*.03}
   if(glow.current)glow.current.material.opacity=.13+n*.025;});
  return <group position={[-2.85,-3.15,.75]} scale={1.25}>
   <mesh position-y={.02} castShadow><cylinderGeometry args={[.3,.37,.05,24]}/><meshStandardMaterial color="#8a6f3e" metalness={.8} roughness={.38}/></mesh>
   <mesh position-y={.09} castShadow><cylinderGeometry args={[.06,.09,.1,16]}/><meshStandardMaterial color="#8a6f3e" metalness={.8} roughness={.38}/></mesh>
-  <mesh position-y={.33} castShadow><cylinderGeometry args={[.15,.17,.4,20]}/><meshStandardMaterial color="#e9dfc6" roughness={.55}/></mesh>
-  <mesh position-y={.532}><cylinderGeometry args={[.165,.165,.025,20]}/><meshStandardMaterial color="#f2e8d0" roughness={.5}/></mesh>
+  <mesh position-y={.33} castShadow><cylinderGeometry args={[.15,.17,.4,32]}/><meshStandardMaterial color="#eadfc4" roughness={.48} emissive="#ff9a4a" emissiveIntensity={.06}/></mesh>
+  {/* the wax pool under the flame glows: light scatters through it */}
+  <mesh position-y={.532}><cylinderGeometry args={[.165,.165,.025,32]}/><meshStandardMaterial ref={wax} color="#f6ead0" roughness={.35} emissive="#ffae5c" emissiveIntensity={.22}/></mesh>
   <mesh position-y={.56}><cylinderGeometry args={[.014,.014,.06,8]}/><meshStandardMaterial color="#171310" roughness={.9}/></mesh>
   <group ref={flame} position-y={.68}>
    <mesh scale={[.62,1.6,.62]}><sphereGeometry args={[.09,12,16]}/><meshBasicMaterial color="#ff8f1f" transparent opacity={.55}/></mesh>
-   <mesh position-y={-.015} scale={[.38,1,.38]}><sphereGeometry args={[.09,12,16]}/><meshBasicMaterial color="#ffc46b" transparent opacity={.85}/></mesh>
-   <mesh position-y={-.03} scale={[.18,.5,.18]}><sphereGeometry args={[.09,12,16]}/><meshBasicMaterial color="#fff6d8"/></mesh>
+   <mesh position-y={-.015} scale={[.38,1,.38]}><sphereGeometry args={[.09,12,16]}/><meshBasicMaterial color={[2.2,1.35,.5]} transparent opacity={.85} toneMapped={false}/></mesh>
+   <mesh position-y={-.03} scale={[.18,.5,.18]}><sphereGeometry args={[.09,12,16]}/><meshBasicMaterial color={[3.4,2.8,1.9]} toneMapped={false}/></mesh>
   </group>
   <sprite ref={glow} position-y={.68} scale={[1.15,1.15,1]}><spriteMaterial map={glowTex} transparent opacity={.13} depthWrite={false}/></sprite>
   <pointLight ref={light} position={[0,.8,.3]} color="#ffab5e" intensity={6} distance={0} decay={1.2}/>
@@ -200,13 +205,13 @@ function Lamp({angle,onAngle,head,onHead}){
    <mesh position-y={.31} castShadow><cylinderGeometry args={[.038,.038,.2,10]}/><meshStandardMaterial color={black} metalness={.35} roughness={.5}/></mesh>
    <mesh castShadow><cylinderGeometry args={[.085,.30,.44,24,1,true]}/><meshStandardMaterial color={black} metalness={.4} roughness={.45} side={THREE.DoubleSide}/></mesh>
    <mesh position-y={.25} castShadow><cylinderGeometry args={[.05,.085,.06,16]}/><meshStandardMaterial color={dark} metalness={.6} roughness={.4}/></mesh>
-   <mesh position-y={-.3}><sphereGeometry args={[.09,12,10]}/><meshBasicMaterial color="#fff3cf"/></mesh>
+   <mesh position-y={-.3}><sphereGeometry args={[.09,12,10]}/><meshBasicMaterial color={[3,2.7,2.1]} toneMapped={false}/></mesh>
    <pointLight position={[0,-.36,.02]} color="#ffdca8" intensity={22} distance={0} decay={2}/>
   </group>
  </group>
 }
 function DeskScene({letter,onMetrics,onBounds,onFocus,caret,focused,pulse,mode,lampAngle,onLampAngle,lampHead,onLampHead}){
- const tex=useLetterTexture(letter,onMetrics,true),wood=useWood(),tip=useRef(pixelPoint(160,365)),paper=useRef(),slope=useRef(),home=useRef({pos:new THREE.Vector3(0,-1.05,13),tgt:new THREE.Vector3(0,-.35,-.2)}),look=useRef(new THREE.Vector3(0,-.35,-.2)),lastKey=useRef(''),lastRep=useRef(new THREE.Vector3(0,-1.05,13));
+ const tex=useLetterTexture(letter,onMetrics,true),wood=useWood(),grain=paperGrain(3),tip=useRef(pixelPoint(160,365)),paper=useRef(),slope=useRef(),home=useRef({pos:new THREE.Vector3(0,-1.05,13),tgt:new THREE.Vector3(0,-.35,-.2)}),look=useRef(new THREE.Vector3(0,-.35,-.2)),lastKey=useRef(''),lastRep=useRef(new THREE.Vector3(0,-1.05,13));
  const {camera,size}=useThree();
  const geometry=useMemo(()=>{const g=new THREE.PlaneGeometry(PW,PH,90,120),p=g.attributes.position;for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i),edge=Math.pow(Math.abs(x)/(PW/2),9);p.setZ(i,.012*Math.sin(y*2)+edge*.055);p.setX(i,x+edge*.009*Math.sin(y*37))}g.computeVertexNormals();return g},[]);
  // Fit the sheet by measuring its own projection: set a first-guess zoom,
@@ -264,8 +269,8 @@ function DeskScene({letter,onMetrics,onBounds,onFocus,caret,focused,pulse,mode,l
   // glide - otherwise the recipient and sign-off lines visibly trail behind
   // the paper while it moves.
   if((settled&&key!==lastKey.current)||camera.position.distanceTo(lastRep.current)>.3){if(settled)lastKey.current=key;lastRep.current.copy(camera.position);const sl=slope.current;if(sl){sl.updateMatrixWorld(true);onBounds({corners:[[-PW/2,PH/2],[PW/2,PH/2],[PW/2,-PH/2],[-PW/2,-PH/2]].map(([x,y])=>{const q=sl.localToWorld(new THREE.Vector3(x,y,0)).project(camera);return [(q.x+1)*size.width/2,(1-q.y)*size.height/2]})})}}});
- useEffect(()=>()=>{geometry.dispose();wood.dispose()},[geometry,wood]);
- return <><color attach="background" args={[mode==='lamp'?'#e9dfc9':'#0d0b08']}/><DeskEnv/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><directionalLight position={mode==='lamp'?[-4,3,5]:[-5,1.5,5]} intensity={mode==='lamp'?.55:1.15} color="#ffb066" castShadow shadow-mapSize={[512,512]} shadow-camera-left={-7} shadow-camera-right={7} shadow-camera-top={7} shadow-camera-bottom={-7} shadow-normalBias={.03} shadow-bias={-.002}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial map={wood} bumpMap={wood} bumpScale={.025} roughness={.85}/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} roughness={.94} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle} head={lampHead} onHead={onLampHead}/>:<Candle/>}<Pen tip={tip} focused={focused} pulse={pulse}/><InkwellProp/><BookProp/><SheetsStack/><CaretShadow slope={slope} tip={tip} focused={focused}/><RestShadow focused={focused}/></>
+ useEffect(()=>()=>{geometry.dispose()},[geometry]);
+ return <><color attach="background" args={[mode==='lamp'?'#1b150e':'#0d0b08']}/><DeskEnv/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><CandleKey mode={mode}/><BackWall mode={mode}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial {...wood} bumpScale={.6} roughness={1} color="#d8c8b4"/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} bumpMap={grain} bumpScale={.35} roughness={.9} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle} head={lampHead} onHead={onLampHead}/>:<Candle/>}<Pen tip={tip} focused={focused} pulse={pulse}/><InkwellProp/><BookProp/><SheetsStack/><CaretShadow slope={slope} tip={tip} focused={focused}/><RestShadow focused={focused}/><DeskPost/></>
 }
 // The choice of desk, shown high in both rooms so it is the first thing a
 // writer meets - the old switch sat at the end of the actions row, below
@@ -346,7 +351,7 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  function move(e){if(!pen.current)return;const last=signatureDraft.current.at(-1),p=point(e);if(last.length>1200)return;const prev=last.at(-1);if(Math.hypot(p[0]-prev[0],p[1]-prev[1])<1.5)return;const strokes=signatureDraft.current.map(s=>[...s]);strokes.at(-1).push(p);signatureDraft.current=strokes;setSignaturePreview(strokes)}
  function fit(){const ctx=document.createElement('canvas').getContext('2d');let fontSize=Number(letter.fontSize)||72;while(fontSize>32&&layoutLetter(ctx,{...letter,fontSize}).overflow)fontSize-=2;onChange({...letter,fontSize})}
  return <main className="atelier"><nav><span className="brand">dearly<span>Writing room</span></span><span className="atelier-saved">Saved on this device</span></nav><div className="atelier-heading"><h1>Your letter</h1></div>
- <ModeSwitch mode="hand" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div ref={stageRef} className={(focused||fieldFocus)?'atelier-stage writing-live':'atelier-stage'} onClick={e=>{if(e.target.tagName==='CANVAS'){const el=input.current;if(el){if(document.activeElement!==el)el.focus({preventScroll:true});const v=el.value.length;el.setSelectionRange(v,v);setCaret(v)}}}}><Canvas shadows dpr={[1,1.25]} camera={{fov:33,position:[0,-1.05,13],near:.1,far:120}}><Suspense fallback={null}><DeskScene letter={letter} onMetrics={receiveMetrics} onBounds={receiveBounds} onFocus={()=>input.current?.focus()} caret={caret} focused={focused} pulse={pulse} mode={lightMode} lampAngle={lampAngle} onLampAngle={setLampAngle} lampHead={lampHead} onLampHead={setLampHead}/></Suspense></Canvas>
+ <ModeSwitch mode="hand" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div ref={stageRef} className={(focused||fieldFocus)?'atelier-stage writing-live':'atelier-stage'} onClick={e=>{if(e.target.tagName==='CANVAS'){const el=input.current;if(el){if(document.activeElement!==el)el.focus({preventScroll:true});const v=el.value.length;el.setSelectionRange(v,v);setCaret(v)}}}}><Canvas shadows dpr={[1,1.25]} camera={{fov:33,position:[0,-1.05,13],near:.1,far:120}}><AdaptiveResolution/><LazyShadows/><Suspense fallback={null}><DeskScene letter={letter} onMetrics={receiveMetrics} onBounds={receiveBounds} onFocus={()=>input.current?.focus()} caret={caret} focused={focused} pulse={pulse} mode={lightMode} lampAngle={lampAngle} onLampAngle={setLampAngle} lampHead={lampHead} onLampHead={setLampHead}/></Suspense></Canvas>
  {bounds&&metrics&&<div className="paper-fields" style={{left:0,top:0,width:PAGE.width*scale,height:PAGE.height*scale,transform:fieldTransform}}>
  <div aria-hidden="true" onPointerDown={e=>tapField(e,'to')} style={{position:'absolute',pointerEvents:'auto',cursor:'text',left:160*scale,top:(230-72)*scale,width:1216*scale,height:95*scale}}/>
  {!letter.to&&fieldFocus!=='to'&&<span className="atelier-placeholder" style={{left:160*scale,top:175*scale,fontSize:62*scale}}>My dearest,</span>}

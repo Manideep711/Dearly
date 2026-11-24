@@ -1,11 +1,13 @@
 import React,{Suspense,useEffect,useMemo,useRef,useState} from 'react';
+import {AdaptiveResolution,LazyShadows} from './render-budget';
 import {Canvas,useFrame,useLoader,useThree} from '@react-three/fiber';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {clone} from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three';
 import {useLetterTexture} from './letter-render';
 import {createPigeonClips} from './pigeon-clips';
-import {useSurface} from './physical';
+import {paperGrain} from './surfaces';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import './sender-send.css';
 import {WAX_COLORS, WAX_DIES, drawWaxSeal, scrollSealOf, makeWaxSealTexture, buildSealPatch} from './wax-seal';
@@ -150,7 +152,7 @@ function CapsuleRig({phase, sealing, sealT0, tied, attached, legTarget}) {
 }
 
 function SenderBird({phase, attached, onLanded, legTarget}) {
-  const gltf = useLoader(GLTFLoader, import.meta.env.BASE_URL + 'models/pigeon.glb');
+  const gltf = useLoader(GLTFLoader, import.meta.env.BASE_URL + 'models/pigeon.glb', l => l.setMeshoptDecoder(MeshoptDecoder));
   const legParts = useCapsuleParts();
   const root = useRef(), clock = useRef(0), state = useRef('');
   const {bird, mixer, clips, fit} = useMemo(() => {
@@ -269,22 +271,42 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
 // camera drifts between shots, and on portrait screens it pulls back
 // until the shot fits the width (the first framing was landscape-only
 // and pushed the landed pigeon clean off a phone screen).
-const PHASE_CAM = {hold: [-1.55, 2.55, 8.6], roll: [-1.55, 2.55, 8.6], stamp: [-.25, 1.75, 7.2], capsule: [.14, 1.5, 7.2], arrival: [1.05, 2.3, 7.2], attach: [2.05, 1.45, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
+const PHASE_CAM = {hold: [-1.55, 2.55, 15.5], roll: [-1.55, 2.55, 15.5], stamp: [-.25, 1.75, 7.2], capsule: [.14, 1.5, 7.2], arrival: [1.05, 2.3, 7.2], attach: [2.05, 1.45, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
 // Most shots sit at the stage's eye line (.4); the stamp beat plays
 // lower (scroll, capsule and stamp all rest below y -1), so its camera
 // dips to centre them instead of leaving the action in the bottom
 // third under a void.
-const PHASE_CAM_Y = {stamp: -.5};
+// The held sheet as the camera sees it: 4.65 x 6.06, its centre lifted
+// to about y .28 by the held pose. PhaseCamera fits it between the
+// caption and the controls (see there), so these two phases' entries
+// in PHASE_CAM / PHASE_CAM_Y are only fallbacks.
+const HELD_SHEET = {w: 4.65 * 1.04, h: 6.06 * 1.04, cy: .28};
+const PHASE_CAM_Y = {stamp: -.5, hold: .45, roll: .45};
 function PhaseCamera({phase}) {
   const camera = useThree(s => s.camera), size = useThree(s => s.size);
   useFrame((_, dt) => {
     const [tx, halfW, minZ] = PHASE_CAM[phase] || PHASE_CAM.hold;
     const aspect = size.width / Math.max(1, size.height);
-    const tz = Math.max(minZ, halfW / (Math.tan(THREE.MathUtils.degToRad(21)) * aspect));
+    const tan = Math.tan(THREE.MathUtils.degToRad(21));
+    let tz = Math.max(minZ, halfW / (tan * aspect));
+    let ty = PHASE_CAM_Y[phase] ?? .4;
+    if (phase === 'hold' || phase === 'roll') {
+      // Fit the held sheet into the screen band between the caption
+      // block and the controls, measured in pixels so it holds on any
+      // screen shape (landscape, phone portrait, short laptop).
+      const h = Math.max(1, size.height), w = Math.max(1, size.width);
+      const top = Math.min(h * .34, w < 650 ? 215 : 250), bottom = Math.min(h * .26, 165);
+      const band = Math.max(h * .3, h - top - bottom);
+      const zH = HELD_SHEET.h * h / (band * 2 * tan);
+      const zW = HELD_SHEET.w / (.86 * 2 * tan * aspect);
+      tz = Math.max(zH, zW);
+      const centrePx = top + band / 2 - h / 2;           // band centre, px below screen centre
+      ty = HELD_SHEET.cy + centrePx * (2 * tz * tan / h); // lift camera so the sheet lands there
+    }
     const d = Math.min(dt, .05);
     camera.position.x = THREE.MathUtils.damp(camera.position.x, tx, 3, d);
     camera.position.z = THREE.MathUtils.damp(camera.position.z, tz, 3, d);
-    camera.position.y = THREE.MathUtils.damp(camera.position.y, PHASE_CAM_Y[phase] ?? .4, 3, d);
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, ty, 3, d);
   });
   return null;
 }
@@ -396,17 +418,20 @@ function StampRig({phase, configRef, onCommit}) {
 
 function SendScene({letter, phase, sealing, sealT0, tied, attached, onLanded, legTarget, manualRoll, onRolled, stampConfigRef, onCommitSeal}) {
   const tex = useLetterTexture(letter, undefined, true);
-  const surface = useSurface();
+  const surface = useMemo(() => paperGrain(14), []);
   return <>
     <PhaseCamera phase={phase}/>
-    <color attach="background" args={['#1c1b15']}/>
+    <color attach="background" args={['#16120d']}/>
     <SendEnv/>
-    <ambientLight intensity={.65}/>
-    <hemisphereLight args={['#e7e5de', '#4b3b30', .85]}/>
-    <directionalLight position={[-3, 5, 7]} intensity={2.3} color="#ffecd0"/>
-    <directionalLight position={[3.5, 4, -3]} intensity={1} color="#b9c8d8"/>
-    <pointLight position={[5, -2, 4]} intensity={12} color="#b7c6ce"/>
-    <mesh position={[0, 0, -6]}><planeGeometry args={[200, 200]}/><meshStandardMaterial color="#36342f" roughness={1} bumpMap={surface} bumpScale={.035}/></mesh>
+    {/* The writing room's light, not a grey studio: warm candle-side key,
+        a faint cool window rim to model the bird's feathers, and an old
+        plaster wall behind — the same room the desk sits in. */}
+    <ambientLight intensity={.45} color="#ffe6c7"/>
+    <hemisphereLight args={['#f1dcbc', '#3a2a1c', .8]}/>
+    <directionalLight position={[-3, 5, 7]} intensity={2.4} color="#ffd9a8"/>
+    <directionalLight position={[3.5, 4, -3]} intensity={.8} color="#aebfd4"/>
+    <pointLight position={[5, -2, 4]} intensity={7} color="#c9b8a0"/>
+    <mesh position={[0, 0, -6]}><planeGeometry args={[200, 200]}/><meshStandardMaterial color="#3a2d21" roughness={1} bumpMap={surface} bumpScale={2.5}/></mesh>
     <SendShadow phase={phase}/>
     <RollingLetter texture={tex} phase={phase} sealing={sealing} sealT0={sealT0} manualRoll={manualRoll} onRolled={onRolled} seal={letter.seal}/>
     <CapsuleRig phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} legTarget={legTarget}/>
@@ -476,7 +501,7 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
     onTouchStart={e => { touchY.current = e.touches[0].clientY; }}
     onTouchMove={e => { if (touchY.current === null) return; driveRoll((touchY.current - e.touches[0].clientY) / 260); touchY.current = e.touches[0].clientY; }}
     onTouchEnd={() => { touchY.current = null; }}>
-    <Canvas shadows dpr={[1, 1.5]} camera={{position: [0, .4, 10.4], fov: 42}} gl={{antialias: true}}>
+    <Canvas shadows dpr={[1, 1.5]} camera={{position: [0, .4, 10.4], fov: 42}} gl={{antialias: true}}><AdaptiveResolution/><LazyShadows/>
       <Suspense fallback={null}><SendScene letter={letter} phase={phase} sealing={sealing} sealT0={sealT0} tied={tied} attached={attached} onLanded={() => setPhase('attach')} legTarget={legTarget} manualRoll={manualRoll} onRolled={handleRolled} stampConfigRef={stampCfgRef} onCommitSeal={s => { if (onSeal) onSeal(s); }}/></Suspense>
     </Canvas>
     <div className="vignette"/>
@@ -501,6 +526,13 @@ export default function SenderSend({letter, makeUrl, onBack, onPreview, onNewLet
       </div>
       {phase !== 'sent' && <button className="text-button" onClick={() => setPhase('sent')}>Skip to the letter link</button>}
     </div>
+    {phase === 'sent' && <div className="sent-card" aria-label="Your letter, sent">
+      <p className="sent-card__eyebrow">Carried by pigeon · {new Date().toLocaleDateString(undefined, {day: 'numeric', month: 'long', year: 'numeric'})}</p>
+      <p className="sent-card__to">{letter.to || 'My dearest,'}</p>
+      <p className="sent-card__body">{(letter.body || '').replace(/\s+/g, ' ').trim().slice(0, 150)}{(letter.body || '').length > 150 ? '…' : ''}</p>
+      <p className="sent-card__from">{letter.from || 'Yours, always'}</p>
+      {letter.seal && <span className="sent-card__seal" aria-hidden="true"/>}
+    </div>}
     {stampOpen && phase === 'stamp' && <div className="stamp-panel">
       <canvas ref={stampPreview} width={116} height={116}/>
       <div className="stamp-fields">

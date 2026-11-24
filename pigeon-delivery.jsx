@@ -1,11 +1,14 @@
 import React,{Suspense,useMemo,useEffect,useRef,useState,useCallback} from 'react';
+import {AdaptiveResolution,LazyShadows} from './render-budget';
 import {Canvas,useLoader,useFrame,useThree} from '@react-three/fiber';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {clone} from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three';
 import {createPigeonClips} from './pigeon-clips';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {useCapsuleParts} from './capsule';
+import SceneLoading from './scene-loading';
 // Staging helpers: a soft radial texture (contact shadow / light pool),
 // a procedural room environment so brass and feathers have something
 // real to reflect, and a graded backdrop instead of a flat void.
@@ -19,8 +22,9 @@ function ContactShadow({phase}){const mat=useRef();const tex=useMemo(()=>radialT
  useEffect(()=>()=>tex.dispose(),[tex]);
  useFrame((_,dt)=>{if(mat.current)mat.current.opacity=THREE.MathUtils.damp(mat.current.opacity,phase==='arrival'?0:.55,5,dt)});
  return <mesh position={[0,.012,0]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[.95,32]}/><meshBasicMaterial ref={mat} map={tex} transparent opacity={0} depthWrite={false}/></mesh>}
-function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,onFed,onCapsule,capsuleTarget,onHover}){
- const gltf=useLoader(GLTFLoader,import.meta.env.BASE_URL+'models/pigeon.glb');
+function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,onFed,onCapsule,capsuleTarget,onHover,onReady}){
+ useEffect(()=>{onReady&&onReady()},[]);
+ const gltf=useLoader(GLTFLoader,import.meta.env.BASE_URL+'models/pigeon.glb',l=>l.setMeshoptDecoder(MeshoptDecoder));
  const feedingAction=useRef(),feedCycle=useRef(-1),emptyTime=useRef(0),feedingDone=useRef(false),lift=useRef(0);const capsuleRef=useRef();const legParts=useCapsuleParts();const root=useRef(),clock=useRef(0),previous=useRef(),bitten=useRef(false);
  const {bird,mixer,clips,fit}=useMemo(()=>{const bird=clone(gltf.scene);bird.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;if(o.name==='poopMesh_Pigeon_mainMat_0')o.visible=false;const mats=Array.isArray(o.material)?o.material:[o.material];o.material=mats.map(m=>{const c=m.clone();if(c.name==='Pigeon_mainMat'){c.transparent=false;c.alphaTest=.45;c.depthWrite=true;c.side=THREE.DoubleSide}return c});if(!Array.isArray(gltf.scene.getObjectByName(o.name)?.material))o.material=o.material[0]}});bird.updateMatrixWorld(true);const b=new THREE.Box3().setFromObject(bird),size=b.getSize(new THREE.Vector3()),center=b.getCenter(new THREE.Vector3());return{bird,mixer:new THREE.AnimationMixer(bird),clips:createPigeonClips(gltf.animations[0]),fit:{scale:2.5/Math.max(size.x,size.y,size.z),center,min:b.min.y,size}}},[gltf]);
  const pileTex=useMemo(()=>radialTexture([[0,'rgba(0,0,0,.42)'],[1,'rgba(0,0,0,0)']]),[]);
@@ -169,7 +173,7 @@ function DeliveryCamera({phase,zoom,capsuleTarget}){
  });return null;
 }
 function Capsule(){const cap=useRef();const parts=useCapsuleParts();useFrame((_,dt)=>{if(cap.current)cap.current.position.x=THREE.MathUtils.lerp(cap.current.position.x,.55,1-Math.exp(-dt*2))});return <group position={[0,.9,0]} rotation={[0,0,-.45]}><group rotation-z={Math.PI/2}>{parts&&<primitive object={parts.body}/>}<mesh position-x={.16} rotation-z={Math.PI/2}><cylinderGeometry args={[.09,.09,.55,24]}/><meshStandardMaterial color="#d3c5a3" roughness={1}/></mesh><group ref={cap}>{parts&&<primitive object={parts.cap}/>}</group></group></group>}
-export default function PigeonDelivery({onOpen,onWrite}){
+export default function PigeonDelivery({onOpen,onWrite}){const[birdReady,setBirdReady]=useState(false);
  const[phase,setPhase]=useState('arrival'),[seeds,setSeeds]=useState([]),[reaction,setReaction]=useState(0);
  const[fullness,setFullness]=useState(0),[unlocked,setUnlocked]=useState(false),[zoom,setZoom]=useState(0),[hover,setHover]=useState(null),[pet,setPet]=useState(null);
  const energy=useRef(0),lastMeal=useRef(0),everEaten=useRef(0),isUnlocked=useRef(false),petTimer=useRef();
@@ -221,11 +225,11 @@ export default function PigeonDelivery({onOpen,onWrite}){
  const hungry=energy.current+seeds.length*20<=80.01;const hunger=Math.round(100-fullness);
  const captions={arrival:'A little messenger. A long way home.',landing:'Something precious has arrived.',waiting:'A little company. A little kindness.',feeding:'One small seed. A little kindness.',ready:'A little gift, just for you.'};
  return <div className={"pigeon-delivery "+(hover==='bird'?'pet-hover':hover==='capsule'?'capsule-hover':'')} ref={container}>
- <Canvas shadows camera={{position:[2.6,1.65,3.6],fov:40}} dpr={[1,1.5]} onCreated={({camera})=>camera.lookAt(0,.65,0)}>
+ <Canvas shadows camera={{position:[2.6,1.65,3.6],fov:40}} dpr={[1,1.5]} onCreated={({camera})=>camera.lookAt(0,.65,0)}><AdaptiveResolution/><LazyShadows/>
  <DeliveryCamera phase={phase} zoom={zoom} capsuleTarget={capsuleTarget}/><StageEnv/><StageBackdrop/><hemisphereLight args={['#f1e9d7','#5c5847',.8]}/><directionalLight position={[2.5,5,3.5]} intensity={2.6} color="#ffe3b3" castShadow shadow-mapSize={[1024,1024]}/><directionalLight position={[-3.5,3.5,-3.5]} intensity={1.7} color="#b9c8d8"/>
  <mesh rotation-x={-Math.PI/2} receiveShadow onClick={e=>{e.stopPropagation();dropSeed()}}><planeGeometry args={[60,60]}/><meshStandardMaterial map={groundTex} roughness={1}/></mesh><mesh position={[0,.01,0]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[3,40]}/><meshBasicMaterial map={poolTex} transparent depthWrite={false}/></mesh><ContactShadow phase={phase}/>
- <Suspense fallback={null}><Messenger phase={phase} onPhase={change} reaction={reaction} onReact={react} onReactionEnd={endReaction} seeds={seeds} onBite={bite} onFed={fed} onCapsule={onOpen} capsuleTarget={capsuleTarget} onHover={setHover}/></Suspense>
- </Canvas><div className="vignette"/><header><span className="brand">dearly<span>LETTERS, FELT.</span></span><button onClick={onWrite}>Write a letter</button></header>
+ <Suspense fallback={null}><Messenger phase={phase} onPhase={change} reaction={reaction} onReact={react} onReactionEnd={endReaction} seeds={seeds} onBite={bite} onFed={fed} onCapsule={onOpen} capsuleTarget={capsuleTarget} onHover={setHover} onReady={()=>setBirdReady(true)}/></Suspense>
+ </Canvas>{!birdReady&&<SceneLoading overlay label="A messenger is on the way…"/>}<div className="vignette"/><header><span className="brand">dearly<span>LETTERS, FELT.</span></span><button onClick={onWrite}>Write a letter</button></header>
  <div className="caption"><p>THE PIGEON POST</p><h1>{captions[phase]}</h1></div>
  <div className="bottom">
  {['waiting','feeding','ready'].includes(phase)&&<div className="pigeon-trust"><label htmlFor="pigeon-hunger">{fullness>=80?'Content':fullness>=40?'Feeling better':'A hungry little messenger'} <span>Hunger {hunger}%</span></label><progress id="pigeon-hunger" max="100" value={hunger}/><small>{hungry?'Drop a few seeds. Petting is always optional.':seeds.length?'Enough on the ground for a full meal.':'A full tummy. More seeds when it is hungry again.'}</small></div>}
