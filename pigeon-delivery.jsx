@@ -10,6 +10,7 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {useCapsuleParts} from './capsule';
 import SceneLoading from './scene-loading';
 import {applyPigeonLook} from './pigeon-look';
+import {cobbleMaps} from './surfaces';
 // Staging helpers: a soft radial texture (contact shadow / light pool),
 // a procedural room environment so brass and feathers have something
 // real to reflect, and a graded backdrop instead of a flat void.
@@ -17,7 +18,7 @@ function radialTexture(stops){const c=document.createElement('canvas');c.width=c
 function StageEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
  useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.35;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
 function StageBackdrop(){const scene=useThree(s=>s.scene);
- const tex=useMemo(()=>{const c=document.createElement('canvas');c.width=4;c.height=512;const x=c.getContext('2d');const g=x.createLinearGradient(0,0,0,512);g.addColorStop(0,'#46483c');g.addColorStop(.55,'#282a21');g.addColorStop(1,'#12140f');x.fillStyle=g;x.fillRect(0,0,4,512);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t},[]);
+ const tex=useMemo(()=>{const c=document.createElement('canvas');c.width=4;c.height=512;const x=c.getContext('2d');const g=x.createLinearGradient(0,0,0,512);g.addColorStop(0,'#3b3128');g.addColorStop(.55,'#211b15');g.addColorStop(1,'#0f0c09');x.fillStyle=g;x.fillRect(0,0,4,512);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t},[]);
  useEffect(()=>{scene.background=tex;return()=>{scene.background=null;tex.dispose()}},[scene,tex]);return null}
 function ContactShadow({phase}){const mat=useRef();const tex=useMemo(()=>radialTexture([[0,'rgba(0,0,0,.5)'],[.6,'rgba(0,0,0,.26)'],[1,'rgba(0,0,0,0)']]),[]);
  useEffect(()=>()=>tex.dispose(),[tex]);
@@ -198,9 +199,9 @@ export default function PigeonDelivery({onOpen,onWrite}){const[birdReady,setBird
  const energy=useRef(0),lastMeal=useRef(0),everEaten=useRef(0),isUnlocked=useRef(false),petTimer=useRef();
  const seedQueue=useRef([]),seedNumber=useRef(0),reactionCount=useRef(0),reacting=useRef(false);
  const capsuleTarget=useRef(new THREE.Vector3(0,.3,0)),container=useRef();
- const groundTex=useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');x.fillStyle='#35362c';x.fillRect(0,0,256,256);for(let i=0;i<5200;i++){x.fillStyle=Math.random()<.5?'rgba(255,246,220,.05)':'rgba(0,0,0,.09)';x.fillRect(Math.random()*256,Math.random()*256,1.4,1.4)}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(6,6);t.colorSpace=THREE.SRGBColorSpace;return t},[]);
+ const cobbles=useMemo(()=>cobbleMaps(28),[]);
  const poolTex=useMemo(()=>radialTexture([[0,'rgba(255,224,168,.30)'],[.55,'rgba(255,224,168,.12)'],[1,'rgba(255,224,168,0)']]),[]);
- useEffect(()=>()=>{groundTex.dispose();poolTex.dispose()},[groundTex,poolTex]);
+ useEffect(()=>()=>{poolTex.dispose()},[poolTex]);
  const change=useCallback(p=>{reacting.current=false;setReaction(0);setPhase(p)},[]);
  const endReaction=useCallback(()=>{reacting.current=false;setReaction(0)},[]);
  const react=useCallback((x,y)=>{
@@ -245,8 +246,8 @@ export default function PigeonDelivery({onOpen,onWrite}){const[birdReady,setBird
  const captions={arrival:'A little messenger. A long way home.',landing:'Something precious has arrived.',waiting:'A little company. A little kindness.',feeding:'One small seed. A little kindness.',ready:'A little gift, just for you.'};
  return <div className={"pigeon-delivery "+(hover==='bird'?'pet-hover':hover==='capsule'?'capsule-hover':'')+(phase==='ready'&&zoom>=.5?' leg-close':'')} ref={container}>
  <Canvas shadows camera={{position:[2.6,1.65,3.6],fov:40}} dpr={[1,1.5]} onCreated={({camera})=>camera.lookAt(0,.65,0)}><AdaptiveResolution/><LazyShadows/>
- <DeliveryCamera phase={phase} zoom={zoom} capsuleTarget={capsuleTarget}/><StageEnv/><StageBackdrop/><hemisphereLight args={['#f1e9d7','#5c5847',.8]}/><directionalLight position={[2.5,5,3.5]} intensity={2.6} color="#ffe3b3" castShadow shadow-mapSize={[1024,1024]}/><directionalLight position={[-3.5,3.5,-3.5]} intensity={1.7} color="#b9c8d8"/>
- <mesh rotation-x={-Math.PI/2} receiveShadow onClick={e=>{e.stopPropagation();dropSeed()}}><planeGeometry args={[60,60]}/><meshStandardMaterial map={groundTex} roughness={1}/></mesh><mesh position={[0,.01,0]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[3,40]}/><meshBasicMaterial map={poolTex} transparent depthWrite={false}/></mesh><ContactShadow phase={phase}/>
+ <DeliveryCamera phase={phase} zoom={zoom} capsuleTarget={capsuleTarget}/><StageEnv/><StageBackdrop/><fog attach="fog" args={['#1c1611',4.5,13]}/><hemisphereLight args={['#f1e9d7','#5c5847',.8]}/><directionalLight position={[2.5,5,3.5]} intensity={2.6} color="#ffe3b3" castShadow shadow-mapSize={[1024,1024]}/><directionalLight position={[-3.5,3.5,-3.5]} intensity={1.7} color="#b9c8d8"/>
+ <mesh rotation-x={-Math.PI/2} receiveShadow onClick={e=>{e.stopPropagation();dropSeed()}}><planeGeometry args={[60,60]}/><meshStandardMaterial {...cobbles} roughness={1} bumpScale={2.2} color="#8f877b"/></mesh><mesh position={[0,.01,0]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[3,40]}/><meshBasicMaterial map={poolTex} transparent depthWrite={false}/></mesh><ContactShadow phase={phase}/>
  <Suspense fallback={null}><Messenger phase={phase} onPhase={change} reaction={reaction} onReact={react} onReactionEnd={endReaction} seeds={seeds} onBite={bite} onFed={fed} onCapsule={onOpen} capsuleTarget={capsuleTarget} onHover={setHover} onReady={()=>setBirdReady(true)}/></Suspense>
  </Canvas>{!birdReady&&<SceneLoading overlay label="A messenger is on the way…"/>}<div className="vignette"/><header><span className="brand">dearly<span>LETTERS, FELT.</span></span><button onClick={onWrite}>Write a letter</button></header>
  <div className="caption"><p>THE PIGEON POST</p><h1>{captions[phase]}</h1></div>

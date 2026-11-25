@@ -32,3 +32,12 @@ export function walnutMaps(repeat = 2) {
 export function paperGrain(repeat = 3) {
   return tex('paper_grain.jpg', {repeat});
 }
+
+// Old stone setts for the pigeon's landing spot.
+export function cobbleMaps(repeat = 20) {
+  return {
+    map: tex('cobble_color.jpg', {srgb: true, repeat}),
+    roughnessMap: tex('cobble_rough.jpg', {repeat}),
+    bumpMap: tex('cobble_bump.jpg', {repeat}),
+  };
+}
