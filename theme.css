@@ -188,3 +188,9 @@ html .pigeon-trust,html .pigeon-delivery .bottom>p{transition:opacity .4s var(--
    rolled scroll you press the seal onto stays in view. */
 @media (min-width:900px){html .stamp-panel{left:auto;right:28px;bottom:auto;top:calc(50% + 48px);transform:translateY(-50%);flex-direction:column;align-items:center;max-width:300px}}
 @media (max-width:899px){html .stamp-panel{bottom:auto;top:96px;transform:translateX(-50%)}}
+
+/* Writing view: the greeting/sign-off hints belong to the overview. In the
+   close perspective view they drift out of register with the paper, so
+   they fade while the body is being written and return on Done. */
+html .atelier-placeholder{transition:opacity .35s var(--ease)}
+html .atelier-stage.writing-live .atelier-placeholder{opacity:0}

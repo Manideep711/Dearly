@@ -273,8 +273,18 @@ function DeskScene({letter,onMetrics,onBounds,onFocus,caret,focused,pulse,mode,l
   const row=rows.find(r=>caret>=r.start&&caret<=r.start+r.text.length)||rows.at(-1);
   if(!row){const l=pixelPoint(160,PAGE.bodyTop);tip.current.copy(slope.current?slope.current.localToWorld(l):l);return}
   const within=Math.max(0,Math.min(row.text.length,caret-row.start)),c=document.createElement('canvas').getContext('2d');
-  c.font=`${row.size}px ${faceFont(letter)}`;const lp=pixelPoint(160+c.measureText(row.text.slice(0,within)).width,row.baseline);tip.current.copy(slope.current?slope.current.localToWorld(lp):lp);
- },[tex,caret]);
+  c.font=`${row.size}px ${faceFont(letter)}`;const tx=160+c.measureText(row.text.slice(0,within)).width;
+  // Ink follows the nib: the reveal edge (rv.x) trails the caret (rv.target)
+  // and the frame loop sweeps it across, so a typed letter's ink appears
+  // where the nib passes. Only a real keystroke (caret +1) animates; a
+  // click, a backspace or a texture refresh snaps straight to the caret.
+  const rv=reveal.current;
+  if(caret===rv.caret){rv.target=tx;if(rv.x>tx)rv.x=tx;rv.base=row.baseline;rv.size=row.size}
+  else{const typed=focused&&rv.seen&&caret===rv.caret+1;
+   if(!typed)rv.x=tx;else if(row.baseline!==rv.base)rv.x=160;
+   rv.target=tx;rv.base=row.baseline;rv.size=row.size;rv.caret=caret;rv.seen=true}
+  if(!focused){const lp=pixelPoint(tx,row.baseline);tip.current.copy(slope.current?slope.current.localToWorld(lp):lp)}
+ },[tex,caret,focused]);
  // The camera holds the wide desk tableau for the whole session. It
  // used to glide in on the caret's line while writing and pull back out
  // for every dip — the constant zooming in and out irritated more than
@@ -289,6 +299,39 @@ function DeskScene({letter,onMetrics,onBounds,onFocus,caret,focused,pulse,mode,l
  // follow camera that zoomed in and out on every line was removed for
  // irritating writers; this one moves only when the line changes.
  const writeCam=useRef({pos:new THREE.Vector3(),tgt:new THREE.Vector3(),v:new THREE.Vector3(),line:null});
+ const reveal=useRef({base:PAGE.bodyTop,size:72,target:160,x:160,caret:-1,seen:false});
+ // The paper's own material, with a tiny shader addition: inside the
+ // rectangle between the reveal edge and the caret it shows the bare
+ // paper (the ink-free background canvas) instead of the inked sheet,
+ // with a soft leading edge. One uniform moves per frame; no texture is
+ // re-uploaded, so the animation costs nothing on a phone.
+ const hideU=useMemo(()=>({uPaper:{value:null},uHide:{value:new THREE.Vector4()},uHideOn:{value:0},uEdge:{value:5/PAGE.width}}),[]);
+ const paperMat=useMemo(()=>{const m=new THREE.MeshStandardMaterial({roughness:.9,side:THREE.DoubleSide,bumpScale:.35});
+  m.onBeforeCompile=sh=>{Object.assign(sh.uniforms,hideU);
+   sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+uniform sampler2D uPaper;uniform vec4 uHide;uniform float uHideOn;uniform float uEdge;`)
+    .replace('#include <map_fragment>',`#include <map_fragment>
+     float hx=smoothstep(uHide.x-uEdge,uHide.x+uEdge,vMapUv.x)*step(vMapUv.x,uHide.z);
+     float hy=step(uHide.y,vMapUv.y)*step(vMapUv.y,uHide.w);
+     float hide=hx*hy*uHideOn;
+     if(hide>0.0){diffuseColor=mix(diffuseColor,vec4(diffuse,opacity)*texture2D(uPaper,vMapUv),hide);}`)};
+  m.customProgramCacheKey=()=>'dearly-ink-reveal-v1';return m},[hideU]);
+ const paperTex=useMemo(()=>{const cv=tex.userData.paperBase;if(!cv)return null;const t=new THREE.CanvasTexture(cv);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t},[tex.userData.paperBase]);
+ useEffect(()=>()=>{paperTex&&paperTex.dispose()},[paperTex]);
+ useEffect(()=>()=>paperMat.dispose(),[paperMat]);
+ if(paperMat.map!==tex){const first=!paperMat.map;paperMat.map=tex;if(first)paperMat.needsUpdate=true}
+ if(paperMat.bumpMap!==grain){paperMat.bumpMap=grain;paperMat.needsUpdate=true}
+ hideU.uPaper.value=paperTex;
+ useFrame((_,dt)=>{const rv=reveal.current;
+  if(!focused){hideU.uHideOn.value=0;rv.x=rv.target;return}
+  // A nib crosses a word in a fraction of a second; a fast typist's
+  // backlog is caught up proportionally so the pen never lags far behind.
+  if(rv.x<rv.target){const gap=rv.target-rv.x;rv.x=Math.min(rv.target,rv.x+Math.max(560,gap*7)*Math.min(dt,.05))}else rv.x=rv.target;
+  const tail=rv.size*.28,W=PAGE.width,H=PAGE.height;
+  hideU.uHide.value.set(rv.x/W,1-(rv.base+rv.size*.6)/H,(rv.target+tail)/W,1-(rv.base-rv.size*1.15)/H);
+  hideU.uHideOn.value=rv.target-rv.x>.5&&paperTex?1:0;
+  const lp=pixelPoint(rv.x,rv.base);tip.current.copy(slope.current?slope.current.localToWorld(lp):lp);
+ });
  useFrame((_,dt)=>{const h=home.current;let dp=h.pos,dl=h.tgt;
   const sl=slope.current;
   if(focused&&sl){const w=writeCam.current;sl.updateMatrixWorld(true);
@@ -310,7 +353,7 @@ function DeskScene({letter,onMetrics,onBounds,onFocus,caret,focused,pulse,mode,l
   // the paper while it moves.
   if((settled&&key!==lastKey.current)||camera.position.distanceTo(lastRep.current)>.04){if(settled)lastKey.current=key;lastRep.current.copy(camera.position);const sl=slope.current;if(sl){sl.updateMatrixWorld(true);onBounds({corners:[[-PW/2,PH/2],[PW/2,PH/2],[PW/2,-PH/2],[-PW/2,-PH/2]].map(([x,y])=>{const q=sl.localToWorld(new THREE.Vector3(x,y,0)).project(camera);return [(q.x+1)*size.width/2,(1-q.y)*size.height/2]})})}}});
  useEffect(()=>()=>{geometry.dispose()},[geometry]);
- return <><color attach="background" args={[mode==='lamp'?'#1b150e':'#0d0b08']}/><DeskEnv/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><CandleKey mode={mode}/><BackWall mode={mode}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial {...wood} bumpScale={.6} roughness={1} color="#d8c8b4"/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} bumpMap={grain} bumpScale={.35} roughness={.9} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle} head={lampHead} onHead={onLampHead}/>:<Candle/>}<Pen tip={tip} focused={focused} pulse={pulse}/><InkwellProp/><BookProp/><SheetsStack/><CaretShadow slope={slope} tip={tip} focused={focused}/><RestShadow focused={focused}/><DeskPost/></>
+ return <><color attach="background" args={[mode==='lamp'?'#1b150e':'#0d0b08']}/><DeskEnv/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><CandleKey mode={mode}/><BackWall mode={mode}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial {...wood} bumpScale={.6} roughness={1} color="#d8c8b4"/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} material={paperMat} receiveShadow castShadow onClick={onFocus}/></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle} head={lampHead} onHead={onLampHead}/>:<Candle/>}<Pen tip={tip} focused={focused} pulse={pulse}/><InkwellProp/><BookProp/><SheetsStack/><CaretShadow slope={slope} tip={tip} focused={focused}/><RestShadow focused={focused}/><DeskPost/></>
 }
 // The choice of desk, shown high in both rooms so it is the first thing a
 // writer meets - the old switch sat at the end of the actions row, below
