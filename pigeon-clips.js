@@ -11,7 +11,14 @@ export const PIGEON_SEGMENTS = Object.freeze({
   reactPreen: { start: 45, end: 51, loop: false },
   reactShuffle: { start: 62, end: 68.8, loop: false },
   idle: { start: 34.04, end: 68.90, loop: false, provisional: true },
-  flight: { start: 80, end: 90, loop: false }
+  flight: { start: 80, end: 90, loop: false },
+  // Cut 2026-11-25 from moments the take held but the app never used.
+  // Boundaries sit on frames where the head is still (measured by head
+  // displacement per 0.5 s), so cross-fades between them are seamless.
+  stretch: { start: 51.3, end: 56.0, loop: false },     // full wing stretch
+  preenWing: { start: 56.0, end: 63.6, loop: false },   // preening under the wing
+  flap: { start: 68.8, end: 72.6, loop: false },        // feather-ruffling flap in place
+  alert: { start: 72.6, end: 79.6, loop: false }        // standing alert, looking around
 });
 
 // Resample the exact endpoints so every isolated clip has a valid first pose.

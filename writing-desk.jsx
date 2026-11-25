@@ -53,12 +53,31 @@ function Pen({tip,focused,pulse}){
  // slant, leaning right, away from the line just written.
  const [scene,setScene]=useState(null);
  useEffect(()=>{let live=true;loadPenScene().then(s=>{if(live)setScene(s)});return()=>{live=false}},[]);
+ // The sheet lies on a board tilted -.5 rad about X. In that frame:
+ // N = out of the paper, UP = toward the top of the page, RIGHT = +X.
+ const frame=useMemo(()=>{const c=Math.cos(.5),sn=Math.sin(.5);const N=new THREE.Vector3(0,sn,c),UP=new THREE.Vector3(0,c,-sn),RIGHT=new THREE.Vector3(1,0,0);
+  // A right-handed writer's quill: rising out of the paper, its shaft
+  // pointing down-page and to the right, toward the writer's shoulder.
+  // That way it lies over blank paper still to be written, never over
+  // the words just written (the old pose pointed up the page and hid them).
+  const dir=N.clone().multiplyScalar(.5).addScaledVector(UP,-.55).addScaledVector(RIGHT,.66).normalize();
+  const hold=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
+  hold.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),.6));
+  return {N,UP,RIGHT,hold,rest:new THREE.Quaternion().setFromEuler(new THREE.Euler(.1,0,-1.52))}},[]);
+ const off=useRef(new THREE.Vector3());
  useFrame((_,dt)=>{const g=group.current;if(!g)return;
   const goal=focused?tip.current:RESTV;
-  g.position.lerp(goal,1-Math.exp(-dt*(focused?26:5)));
-  if(focused){const age=performance.now()-pulse.current;if(age<230){const b=Math.sin(age/230*Math.PI);g.position.y-=b*.04}}
-  g.rotation.z=THREE.MathUtils.damp(g.rotation.z,focused?-.42:-1.52,8,dt);
-  g.rotation.x=THREE.MathUtils.damp(g.rotation.x,focused?.55:.1,8,dt)});
+  g.position.lerp(goal,1-Math.exp(-dt*(focused?22:5)));
+  // Each keystroke is a little written stroke, not a hop: the nib makes
+  // two small cursive loops up and down the line and lifts a touch off
+  // the paper between letters, then settles on the new caret.
+  if(focused){const age=performance.now()-pulse.current;if(age<260){const u=age/260,env=Math.sin(u*Math.PI);
+   off.current.set(0,0,0).addScaledVector(frame.UP,Math.sin(u*Math.PI*4)*.028*env).addScaledVector(frame.RIGHT,Math.cos(u*Math.PI*4)*.012*env).addScaledVector(frame.N,Math.abs(Math.sin(u*Math.PI*2))*.02);
+   g.position.add(off.current)}}
+  g.quaternion.slerp(focused?frame.hold:frame.rest,1-Math.exp(-dt*8));
+  // In the hand a quill is long, nearly the page's width; resting on the
+  // desk it keeps its old size so the tableau's proportions stay put.
+  g.scale.setScalar(THREE.MathUtils.damp(g.scale.x,focused?1.25:.5,6,dt))});
  return <group ref={group} scale={.5} position={[1.65,-3.08,1.55]} rotation={[.1,0,-1.52]}>
   {scene&&<primitive object={scene}/>}
  </group>
@@ -262,13 +281,34 @@ function DeskScene({letter,onMetrics,onBounds,onFocus,caret,focused,pulse,mode,l
  // it helped, so the follow shot is gone. The corner re-reporting below
  // stays: it keeps the invisible input fields glued to the paper while
  // the initial fit settles.
- useFrame((_,dt)=>{const h=home.current;const dp=h.pos,dl=h.tgt;
+ // Writing view. When the page has focus the camera glides in ONCE to
+ // look squarely down at the sheet, sized so the paper fills the stage
+ // width, and then only drifts down a line at a time to keep the line
+ // being written in the upper part of the frame (above a phone's
+ // keyboard). No zooming while writing and no sideways chase: the old
+ // follow camera that zoomed in and out on every line was removed for
+ // irritating writers; this one moves only when the line changes.
+ const writeCam=useRef({pos:new THREE.Vector3(),tgt:new THREE.Vector3(),v:new THREE.Vector3(),line:null});
+ useFrame((_,dt)=>{const h=home.current;let dp=h.pos,dl=h.tgt;
+  const sl=slope.current;
+  if(focused&&sl){const w=writeCam.current;sl.updateMatrixWorld(true);
+   const local=sl.worldToLocal(w.v.copy(tip.current));
+   const aspect=size.width/Math.max(1,size.height),tanH=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
+   let d=(PW*1.12)/(2*tanH*aspect);d=Math.max(d,(PH*(size.width<700?.42:.62))/(2*tanH));d=Math.min(d,(PH*1.12)/(2*tanH));
+   const visH=2*d*tanH,frac=size.width<700?.34:.42;
+   // Quantise to the line, so typing along a line never moves the view.
+   const line=Math.round(local.y*20)/20;if(w.line===null||Math.abs(line-w.line)>.01)w.line=line;
+   let cy=w.line-(.5-frac)*visH;const lo=-PH/2+visH/2-.3,hi=PH/2-visH/2+.3;cy=lo>hi?0:THREE.MathUtils.clamp(cy,lo,hi);
+   w.tgt.set(0,cy,0);sl.localToWorld(w.tgt);
+   w.pos.set(0,cy-d*.16,d);sl.localToWorld(w.pos);
+   dp=w.pos;dl=w.tgt}
+  else writeCam.current.line=null;
   const k=1-Math.exp(-dt*3);camera.position.lerp(dp,k);look.current.lerp(dl,k);camera.lookAt(look.current);
   const settled=camera.position.distanceTo(dp)<.03&&look.current.distanceTo(dl)<.03,key=dp.x.toFixed(1)+','+dp.y.toFixed(1)+','+dp.z.toFixed(1);
   // Re-glue the fields not only once the camera settles but all through the
   // glide - otherwise the recipient and sign-off lines visibly trail behind
   // the paper while it moves.
-  if((settled&&key!==lastKey.current)||camera.position.distanceTo(lastRep.current)>.3){if(settled)lastKey.current=key;lastRep.current.copy(camera.position);const sl=slope.current;if(sl){sl.updateMatrixWorld(true);onBounds({corners:[[-PW/2,PH/2],[PW/2,PH/2],[PW/2,-PH/2],[-PW/2,-PH/2]].map(([x,y])=>{const q=sl.localToWorld(new THREE.Vector3(x,y,0)).project(camera);return [(q.x+1)*size.width/2,(1-q.y)*size.height/2]})})}}});
+  if((settled&&key!==lastKey.current)||camera.position.distanceTo(lastRep.current)>.04){if(settled)lastKey.current=key;lastRep.current.copy(camera.position);const sl=slope.current;if(sl){sl.updateMatrixWorld(true);onBounds({corners:[[-PW/2,PH/2],[PW/2,PH/2],[PW/2,-PH/2],[-PW/2,-PH/2]].map(([x,y])=>{const q=sl.localToWorld(new THREE.Vector3(x,y,0)).project(camera);return [(q.x+1)*size.width/2,(1-q.y)*size.height/2]})})}}});
  useEffect(()=>()=>{geometry.dispose()},[geometry]);
  return <><color attach="background" args={[mode==='lamp'?'#1b150e':'#0d0b08']}/><DeskEnv/><ambientLight intensity={mode==='lamp'?.55:.28} color="#ffe7c4"/><hemisphereLight args={mode==='lamp'?['#fff6e8','#7a6a52',.95]:['#4a3a26','#0b0906',.75]}/><directionalLight position={[6,3,4]} intensity={mode==='lamp'?.12:.55} color="#7d90b8"/><CandleKey mode={mode}/><BackWall mode={mode}/><mesh rotation-x={-Math.PI/2} position={[0,-3.15,-3]} receiveShadow><planeGeometry args={[46,30]}/><meshStandardMaterial {...wood} bumpScale={.6} roughness={1} color="#d8c8b4"/></mesh><group ref={slope} position={[0,-.35,-.3]} rotation-x={-.5}><mesh position-z={-.075} receiveShadow castShadow><boxGeometry args={[PW+.55,PH+.55,.09]}/><meshStandardMaterial color="#241a12" roughness={.85}/></mesh><mesh position={[.03,-.04,-.02]} rotation-z={.006}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#d9cfb6" roughness={1}/></mesh><mesh position={[-.05,-.11,-.04]} rotation-z={-.014}><planeGeometry args={[PW+.07,PH+.07]}/><meshStandardMaterial color="#c9bb9c" roughness={1}/></mesh><mesh ref={paper} geometry={geometry} receiveShadow castShadow onClick={onFocus}><meshStandardMaterial map={tex} bumpMap={grain} bumpScale={.35} roughness={.9} side={THREE.DoubleSide}/></mesh></group><pointLight position={[3.9,-2.1,1.9]} intensity={mode==='lamp'?.8:2.2} distance={3.2} decay={2} color="#ffb066"/>{mode==='lamp'?<Lamp angle={lampAngle} onAngle={onLampAngle} head={lampHead} onHead={onLampHead}/>:<Candle/>}<Pen tip={tip} focused={focused} pulse={pulse}/><InkwellProp/><BookProp/><SheetsStack/><CaretShadow slope={slope} tip={tip} focused={focused}/><RestShadow focused={focused}/><DeskPost/></>
 }
@@ -351,7 +391,7 @@ function QuillDesk({letter,onChange,onPreview,onSwitchMode}){
  function move(e){if(!pen.current)return;const last=signatureDraft.current.at(-1),p=point(e);if(last.length>1200)return;const prev=last.at(-1);if(Math.hypot(p[0]-prev[0],p[1]-prev[1])<1.5)return;const strokes=signatureDraft.current.map(s=>[...s]);strokes.at(-1).push(p);signatureDraft.current=strokes;setSignaturePreview(strokes)}
  function fit(){const ctx=document.createElement('canvas').getContext('2d');let fontSize=Number(letter.fontSize)||72;while(fontSize>32&&layoutLetter(ctx,{...letter,fontSize}).overflow)fontSize-=2;onChange({...letter,fontSize})}
  return <main className="atelier"><nav><span className="brand">dearly<span>Writing room</span></span><span className="atelier-saved">Saved on this device</span></nav><div className="atelier-heading"><h1>Your letter</h1></div>
- <ModeSwitch mode="hand" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div ref={stageRef} className={(focused||fieldFocus)?'atelier-stage writing-live':'atelier-stage'} onClick={e=>{if(e.target.tagName==='CANVAS'){const el=input.current;if(el){if(document.activeElement!==el)el.focus({preventScroll:true});const v=el.value.length;el.setSelectionRange(v,v);setCaret(v)}}}}><Canvas shadows dpr={[1,1.25]} camera={{fov:33,position:[0,-1.05,13],near:.1,far:120}}><AdaptiveResolution/><LazyShadows/><Suspense fallback={null}><DeskScene letter={letter} onMetrics={receiveMetrics} onBounds={receiveBounds} onFocus={()=>input.current?.focus()} caret={caret} focused={focused} pulse={pulse} mode={lightMode} lampAngle={lampAngle} onLampAngle={setLampAngle} lampHead={lampHead} onLampHead={setLampHead}/></Suspense></Canvas>
+ <ModeSwitch mode="hand" onSwitchMode={onSwitchMode}/><PaperPicker letter={letter} onChange={onChange}/><div ref={stageRef} className={(focused||fieldFocus)?'atelier-stage writing-live':'atelier-stage'} onClick={e=>{if(e.target.tagName==='CANVAS'){const el=input.current;if(el){if(document.activeElement!==el)el.focus({preventScroll:true});const v=el.value.length;el.setSelectionRange(v,v);setCaret(v)}}}}><Canvas shadows dpr={[1,1.25]} camera={{fov:33,position:[0,-1.05,13],near:.1,far:120}}><AdaptiveResolution min={.9}/><LazyShadows/><Suspense fallback={null}><DeskScene letter={letter} onMetrics={receiveMetrics} onBounds={receiveBounds} onFocus={()=>input.current?.focus()} caret={caret} focused={focused} pulse={pulse} mode={lightMode} lampAngle={lampAngle} onLampAngle={setLampAngle} lampHead={lampHead} onLampHead={setLampHead}/></Suspense></Canvas>
  {bounds&&metrics&&<div className="paper-fields" style={{left:0,top:0,width:PAGE.width*scale,height:PAGE.height*scale,transform:fieldTransform}}>
  <div aria-hidden="true" onPointerDown={e=>tapField(e,'to')} style={{position:'absolute',pointerEvents:'auto',cursor:'text',left:160*scale,top:(230-72)*scale,width:1216*scale,height:95*scale}}/>
  {!letter.to&&fieldFocus!=='to'&&<span className="atelier-placeholder" style={{left:160*scale,top:175*scale,fontSize:62*scale}}>My dearest,</span>}

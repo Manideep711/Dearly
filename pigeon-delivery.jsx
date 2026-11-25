@@ -9,6 +9,7 @@ import {createPigeonClips} from './pigeon-clips';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {useCapsuleParts} from './capsule';
 import SceneLoading from './scene-loading';
+import {applyPigeonLook} from './pigeon-look';
 // Staging helpers: a soft radial texture (contact shadow / light pool),
 // a procedural room environment so brass and feathers have something
 // real to reflect, and a graded backdrop instead of a flat void.
@@ -24,9 +25,10 @@ function ContactShadow({phase}){const mat=useRef();const tex=useMemo(()=>radialT
  return <mesh position={[0,.012,0]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[.95,32]}/><meshBasicMaterial ref={mat} map={tex} transparent opacity={0} depthWrite={false}/></mesh>}
 function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,onFed,onCapsule,capsuleTarget,onHover,onReady}){
  useEffect(()=>{onReady&&onReady()},[]);
+ const[ambient,setAmbient]=useState(0);
  const gltf=useLoader(GLTFLoader,import.meta.env.BASE_URL+'models/pigeon.glb',l=>l.setMeshoptDecoder(MeshoptDecoder));
  const feedingAction=useRef(),feedCycle=useRef(-1),emptyTime=useRef(0),feedingDone=useRef(false),lift=useRef(0);const capsuleRef=useRef();const legParts=useCapsuleParts();const root=useRef(),clock=useRef(0),previous=useRef(),bitten=useRef(false);
- const {bird,mixer,clips,fit}=useMemo(()=>{const bird=clone(gltf.scene);bird.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;if(o.name==='poopMesh_Pigeon_mainMat_0')o.visible=false;const mats=Array.isArray(o.material)?o.material:[o.material];o.material=mats.map(m=>{const c=m.clone();if(c.name==='Pigeon_mainMat'){c.transparent=false;c.alphaTest=.45;c.depthWrite=true;c.side=THREE.DoubleSide}return c});if(!Array.isArray(gltf.scene.getObjectByName(o.name)?.material))o.material=o.material[0]}});bird.updateMatrixWorld(true);const b=new THREE.Box3().setFromObject(bird),size=b.getSize(new THREE.Vector3()),center=b.getCenter(new THREE.Vector3());return{bird,mixer:new THREE.AnimationMixer(bird),clips:createPigeonClips(gltf.animations[0]),fit:{scale:2.5/Math.max(size.x,size.y,size.z),center,min:b.min.y,size}}},[gltf]);
+ const {bird,mixer,clips,fit}=useMemo(()=>{const bird=clone(gltf.scene);bird.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;if(o.name==='poopMesh_Pigeon_mainMat_0')o.visible=false;const mats=Array.isArray(o.material)?o.material:[o.material];o.material=mats.map(m=>{const c=m.clone();if(c.name==='Pigeon_mainMat'){c.transparent=false;c.alphaTest=.45;c.depthWrite=true;c.side=THREE.DoubleSide;applyPigeonLook(c)}return c});if(!Array.isArray(gltf.scene.getObjectByName(o.name)?.material))o.material=o.material[0]}});bird.updateMatrixWorld(true);const b=new THREE.Box3().setFromObject(bird),size=b.getSize(new THREE.Vector3()),center=b.getCenter(new THREE.Vector3());return{bird,mixer:new THREE.AnimationMixer(bird),clips:createPigeonClips(gltf.animations[0]),fit:{scale:2.5/Math.max(size.x,size.y,size.z),center,min:b.min.y,size}}},[gltf]);
  const pileTex=useMemo(()=>radialTexture([[0,'rgba(0,0,0,.42)'],[1,'rgba(0,0,0,0)']]),[]);
  const livingPose=useMemo(()=>({
   head:bird.getObjectByName('head1_09'),chest:bird.getObjectByName('chest_059'),
@@ -70,16 +72,25 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
   return()=>{leg.remove(anchor);anchorRef.current=null};
  },[bird,legR]);
  const legEnds=useMemo(()=>{const out=[];bird.traverse(o=>{if(/_leg_\d+$/.test(o.name)){let e=o;while(e.children.length)e=e.children[0];out.push(e)}});return out},[bird]);
+ // One foot per side: the end of each leg chain carries the toes.
+ const footBones=useMemo(()=>{const L=bird.getObjectByName('L_leg_077'),R=bird.getObjectByName('R_leg_078')||bird.getObjectByName([...legEnds.map(e=>e.name)].find(n=>/^R_/.test(n))||'');const end=b=>{if(!b)return null;let e=b;while(e.children.length)e=e.children[0];return e};const out=[end(L),end(R)].filter(Boolean);return out.length?out:legEnds.slice(0,2)},[bird,legEnds]);
+ const footShadows=useRef([]);const footTex=useMemo(()=>radialTexture([[0,'rgba(0,0,0,.75)'],[.55,'rgba(0,0,0,.3)'],[1,'rgba(0,0,0,0)']]),[]);
  useEffect(()=>{
   clock.current=0;bitten.current=false;feedCycle.current=-1;emptyTime.current=0;feedingDone.current=false;
   const interactive=phase==='waiting'||phase==='ready';
   const reacting=interactive&&reaction>0;
-  const reactions=['reactLook'];
-  const key=reacting?reactions[(reaction-1)%reactions.length]:phase==='arrival'?'flight':phase==='landing'?'approachAndLand':phase==='feeding'?'peck':phase==='ready'?'walk':'idle';
+  // Stroking her gets a different response each time, from the rig's
+  // own repertoire, not the same head-turn on repeat.
+  const reactions=['reactLook','reactShuffle','reactPreen','stretch'];
+  // At rest she is never a statue: an alert stance broken now and then
+  // by real behaviours, each played whole and cross-faded into the next.
+  // (She used to hold the walk cycle paused at 0.15 s while waiting for
+  // the capsule to be opened — frozen mid-stride, one foot in the air.)
+  const AMBIENT=['alert','reactLook','alert','preenWing','alert','reactShuffle','alert','stretch','reactLook','alert','flap'];
+  const key=reacting?reactions[(reaction-1)%reactions.length]:phase==='arrival'?'flight':phase==='landing'?'approachAndLand':phase==='feeding'?'peck':AMBIENT[ambient%AMBIENT.length];
   const action=mixer.clipAction(clips[key]);
-  action.reset().setEffectiveWeight(1).setEffectiveTimeScale(phase==='landing'?clips.approachAndLand.duration/.95:interactive&&!reacting?1.2:1);
-  action.setLoop(interactive&&!reacting?THREE.LoopRepeat:THREE.LoopOnce,interactive&&!reacting?Infinity:1);action.clampWhenFinished=!(interactive&&!reacting);
-  if(phase==='ready'&&!reacting){action.time=.15;action.paused=true}
+  action.reset().setEffectiveWeight(1).setEffectiveTimeScale(phase==='landing'?clips.approachAndLand.duration/.95:1);
+  action.setLoop(THREE.LoopOnce,1);action.clampWhenFinished=true;
   if(phase==='feeding'){action.time=Math.max(0,feedingSpot.time-.42);action.paused=true;feedingAction.current=action}
   action.play();
   if(previous.current&&previous.current!==action){previous.current.fadeOut(phase==='landing'?.18:phase==='feeding'?.65:.5);action.fadeIn(phase==='landing'?.18:phase==='feeding'?.65:.5)}
@@ -88,11 +99,12 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
    if(e.action!==action)return;
    if(reacting)onReactionEnd();
    else if(phase==='landing')onPhase('waiting');
+   else if(interactive)setAmbient(a=>a+1);
    
   };
   mixer.addEventListener('finished',done);
   return()=>mixer.removeEventListener('finished',done);
- },[phase,reaction,clips,mixer,onPhase,onReactionEnd,onFed]);
+ },[phase,reaction,ambient,clips,mixer,onPhase,onReactionEnd,onFed]);
  useEffect(()=>()=>{mixer.stopAllAction();mixer.uncacheRoot(bird);bird.traverse(o=>{if(o.isMesh)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose())})},[mixer,bird]);
  useFrame((_,dt)=>{const d=Math.min(dt,.05);
   // Restore the sampled pose before adding this frame's gentle movement.
@@ -125,7 +137,7 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
   root.current.rotation.y=THREE.MathUtils.damp(root.current.rotation.y,phase==='ready'?.3:0,3,d);
   pose.time+=d;
   const resting=(phase==='waiting'||phase==='ready')&&reaction===0;
-  pose.weight=THREE.MathUtils.damp(pose.weight,resting?1:0,6,d);
+  pose.weight=THREE.MathUtils.damp(pose.weight,resting?.35:0,6,d);
   if(pose.head&&pose.chest){
    pose.headBase.copy(pose.head.quaternion);pose.chestBase.copy(pose.chest.scale);
    const t=pose.time,w=pose.weight;
@@ -141,8 +153,15 @@ function Messenger({phase,onPhase,reaction,onReact,onReactionEnd,seeds,onBite,on
   // the clips' crouches and dips otherwise sink her legs into the
   // stage, worst at landing.
   if(phase!=='arrival'){let minY=Infinity;const wp=tmpV.current;for(const e of legEnds){e.getWorldPosition(wp);if(wp.y<minY)minY=wp.y}if(minY<.03)root.current.position.y+=.03-minY}
+  // Contact shadows: a small soft shadow under each foot, darkest when
+  // the toes are on the ground, fading as a foot lifts. Without them the
+  // feet read as hovering over the pavement.
+  root.current.updateMatrixWorld(true);
+  footShadows.current.forEach((m,i)=>{const e=footBones[i];if(!m||!e)return;e.getWorldPosition(tmpA.current);const h=Math.max(0,tmpA.current.y);
+   tmpB.current.set(tmpA.current.x,.004,tmpA.current.z);root.current.worldToLocal(tmpB.current);m.position.copy(tmpB.current);
+   m.material.opacity=phase==='arrival'?0:.55*Math.max(0,1-h/.18)});
  });
- return <group ref={root}><group scale={fit.scale} rotation-y={-.35} position={[-fit.center.x*fit.scale,-fit.min*fit.scale,-fit.center.z*fit.scale]}><primitive object={bird} onPointerOver={e=>{e.stopPropagation();onHover('bird')}} onPointerOut={()=>onHover(null)} onClick={e=>{e.stopPropagation();onReact(e.clientX,e.clientY)}}/>
+ return <group ref={root}>{[0,1].map(i=><mesh key={'foot'+i} ref={m=>{footShadows.current[i]=m}} rotation-x={-Math.PI/2} raycast={()=>null} renderOrder={3}><circleGeometry args={[.075,20]}/><meshBasicMaterial map={footTex} transparent opacity={0} depthWrite={false}/></mesh>)}<group scale={fit.scale} rotation-y={-.35} position={[-fit.center.x*fit.scale,-fit.min*fit.scale,-fit.center.z*fit.scale]}><primitive object={bird} onPointerOver={e=>{e.stopPropagation();onHover('bird')}} onPointerOut={()=>onHover(null)} onClick={e=>{e.stopPropagation();onReact(e.clientX,e.clientY)}}/>
 <group ref={capsuleRef} onClick={e=>{e.stopPropagation();if(phase==='ready')onCapsule();else onReact(e.clientX,e.clientY)}} onPointerOver={e=>{e.stopPropagation();onHover('capsule')}} onPointerOut={()=>onHover(null)}>
 <group position-x={legR*2}>{/* the capsule hangs BESIDE the shin: centred on the bone axis it was buried inside the feathered leg and only its straps showed */}<group rotation-z={Math.PI/2} scale={legR*4.95}>{legParts&&<primitive object={legParts.body}/>}{legParts&&<primitive object={legParts.cap}/>}</group>
 {[-1.3,1.3].map(y=><mesh key={'s'+y} position={[-legR*.95,y*legR,0]} rotation-x={Math.PI/2} scale-x={1.4} castShadow><torusGeometry args={[legR*1.5,legR*.17,8,36]}/><meshStandardMaterial color="#765132" roughness={.9} side={THREE.DoubleSide}/></mesh>)}
@@ -224,7 +243,7 @@ export default function PigeonDelivery({onOpen,onWrite}){const[birdReady,setBird
  },[phase]);
  const hungry=energy.current+seeds.length*20<=80.01;const hunger=Math.round(100-fullness);
  const captions={arrival:'A little messenger. A long way home.',landing:'Something precious has arrived.',waiting:'A little company. A little kindness.',feeding:'One small seed. A little kindness.',ready:'A little gift, just for you.'};
- return <div className={"pigeon-delivery "+(hover==='bird'?'pet-hover':hover==='capsule'?'capsule-hover':'')} ref={container}>
+ return <div className={"pigeon-delivery "+(hover==='bird'?'pet-hover':hover==='capsule'?'capsule-hover':'')+(phase==='ready'&&zoom>=.5?' leg-close':'')} ref={container}>
  <Canvas shadows camera={{position:[2.6,1.65,3.6],fov:40}} dpr={[1,1.5]} onCreated={({camera})=>camera.lookAt(0,.65,0)}><AdaptiveResolution/><LazyShadows/>
  <DeliveryCamera phase={phase} zoom={zoom} capsuleTarget={capsuleTarget}/><StageEnv/><StageBackdrop/><hemisphereLight args={['#f1e9d7','#5c5847',.8]}/><directionalLight position={[2.5,5,3.5]} intensity={2.6} color="#ffe3b3" castShadow shadow-mapSize={[1024,1024]}/><directionalLight position={[-3.5,3.5,-3.5]} intensity={1.7} color="#b9c8d8"/>
  <mesh rotation-x={-Math.PI/2} receiveShadow onClick={e=>{e.stopPropagation();dropSeed()}}><planeGeometry args={[60,60]}/><meshStandardMaterial map={groundTex} roughness={1}/></mesh><mesh position={[0,.01,0]} rotation-x={-Math.PI/2} raycast={()=>null}><circleGeometry args={[3,40]}/><meshBasicMaterial map={poolTex} transparent depthWrite={false}/></mesh><ContactShadow phase={phase}/>

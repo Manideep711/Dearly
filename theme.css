@@ -179,3 +179,12 @@ html .paper-swatches::-webkit-scrollbar-thumb{background:rgba(214,176,114,.45);b
 html .paper-swatches::-webkit-scrollbar-track{background:transparent}
 @media (max-width:650px){html .atelier-saved{max-width:none;white-space:nowrap;font-size:10px;letter-spacing:.16em}}
 html .caption{padding:0 20px}
+
+/* Leg close-up: the hunger meter has done its job; keep the feet clear. */
+html .pigeon-delivery.leg-close .pigeon-trust,html .pigeon-delivery.leg-close .bottom>p:not(.bird-credit){opacity:0;pointer-events:none;transition:opacity .4s var(--ease)}
+html .pigeon-trust,html .pigeon-delivery .bottom>p{transition:opacity .4s var(--ease)}
+
+/* Your stamp: on wide screens the signet picker sits to the side, so the
+   rolled scroll you press the seal onto stays in view. */
+@media (min-width:900px){html .stamp-panel{left:auto;right:28px;bottom:auto;top:calc(50% + 48px);transform:translateY(-50%);flex-direction:column;align-items:center;max-width:300px}}
+@media (max-width:899px){html .stamp-panel{bottom:auto;top:96px;transform:translateX(-50%)}}

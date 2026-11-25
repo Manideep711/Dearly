@@ -12,6 +12,7 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import './sender-send.css';
 import {WAX_COLORS, WAX_DIES, drawWaxSeal, scrollSealOf, makeWaxSealTexture, buildSealPatch} from './wax-seal';
 import {useCapsuleParts} from './capsule';
+import {applyPigeonLook} from './pigeon-look';
 
 function SendEnv(){const gl=useThree(s=>s.gl),scene=useThree(s=>s.scene);
  useEffect(()=>{const pmrem=new THREE.PMREMGenerator(gl);const tex=pmrem.fromScene(new RoomEnvironment(),.04).texture;scene.environment=tex;scene.environmentIntensity=.3;return()=>{scene.environment=null;scene.environmentIntensity=1;tex.dispose();pmrem.dispose()}},[gl,scene]);return null}
@@ -157,7 +158,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
   const root = useRef(), clock = useRef(0), state = useRef('');
   const {bird, mixer, clips, fit} = useMemo(() => {
     const bird = clone(gltf.scene);
-    bird.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; if (o.name === 'poopMesh_Pigeon_mainMat_0') o.visible = false; const mats = Array.isArray(o.material) ? o.material : [o.material]; o.material = mats.map(m => { const c = m.clone(); if (c.name === 'Pigeon_mainMat') { c.transparent = false; c.alphaTest = .45; c.depthWrite = true; c.side = THREE.DoubleSide; } return c; }); if (!Array.isArray(gltf.scene.getObjectByName(o.name)?.material)) o.material = o.material[0]; } });
+    bird.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; if (o.name === 'poopMesh_Pigeon_mainMat_0') o.visible = false; const mats = Array.isArray(o.material) ? o.material : [o.material]; o.material = mats.map(m => { const c = m.clone(); if (c.name === 'Pigeon_mainMat') { c.transparent = false; c.alphaTest = .45; c.depthWrite = true; c.side = THREE.DoubleSide; applyPigeonLook(c); } return c; }); if (!Array.isArray(gltf.scene.getObjectByName(o.name)?.material)) o.material = o.material[0]; } });
     bird.updateMatrixWorld(true);
     const b = new THREE.Box3().setFromObject(bird), size = b.getSize(new THREE.Vector3()), center = b.getCenter(new THREE.Vector3());
     return {bird, mixer: new THREE.AnimationMixer(bird), clips: createPigeonClips(gltf.animations[0]), fit: {scale: 3.35 / Math.max(size.x, size.y, size.z), center, min: b.min.y}};
@@ -271,7 +272,7 @@ function SenderBird({phase, attached, onLanded, legTarget}) {
 // camera drifts between shots, and on portrait screens it pulls back
 // until the shot fits the width (the first framing was landscape-only
 // and pushed the landed pigeon clean off a phone screen).
-const PHASE_CAM = {hold: [-1.55, 2.55, 15.5], roll: [-1.55, 2.55, 15.5], stamp: [-.25, 1.75, 7.2], capsule: [.14, 1.5, 7.2], arrival: [1.05, 2.3, 7.2], attach: [2.05, 1.45, 7.2], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
+const PHASE_CAM = {hold: [-1.55, 2.55, 15.5], roll: [-1.55, 2.55, 15.5], stamp: [-.25, 1.75, 7.2], capsule: [.14, 1.5, 7.2], arrival: [1.05, 2.3, 7.2], attach: [2.25, .95, 3.6], depart: [1.05, 2.3, 7.2], sent: [1.05, 2.3, 7.2]};
 // Most shots sit at the stage's eye line (.4); the stamp beat plays
 // lower (scroll, capsule and stamp all rest below y -1), so its camera
 // dips to centre them instead of leaving the action in the bottom
@@ -281,7 +282,10 @@ const PHASE_CAM = {hold: [-1.55, 2.55, 15.5], roll: [-1.55, 2.55, 15.5], stamp: 
 // caption and the controls (see there), so these two phases' entries
 // in PHASE_CAM / PHASE_CAM_Y are only fallbacks.
 const HELD_SHEET = {w: 4.65 * 1.04, h: 6.06 * 1.04, cy: .28};
-const PHASE_CAM_Y = {stamp: -.5, hold: .45, roll: .45};
+// Tying the capsule on is the moment the whole scene builds to: the
+// camera moves in close on the bird so the brass capsule on her leg is
+// actually visible (from the wide shot it was a few pixels).
+const PHASE_CAM_Y = {stamp: -.5, hold: .45, roll: .45, attach: .92};
 function PhaseCamera({phase}) {
   const camera = useThree(s => s.camera), size = useThree(s => s.size);
   useFrame((_, dt) => {
