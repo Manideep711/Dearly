@@ -3,6 +3,7 @@ import {AdaptiveResolution,LazyShadows} from './render-budget';
 import {Canvas,useFrame,useThree} from '@react-three/fiber';
 import * as THREE from 'three';
 import {useLetterTexture} from './letter-render';
+import {loadModel} from './model-loader';
 import {PAGE,faceFont} from './letter-layout';
 import {useWood,Candle,ModeSwitch} from './writing-desk';
 import PaperPicker from './paper-picker';
@@ -21,25 +22,27 @@ const sfx={ctx:null,noise:null,on:true,
  ding(){if(!this.on)return;this.ensure();if(!this.ctx)return;const t=this.ctx.currentTime,o=this.ctx.createOscillator(),g=this.ctx.createGain();o.type='sine';o.frequency.value=1568;g.gain.setValueAtTime(.05,t);g.gain.exponentialRampToValueAtTime(.0008,t+.5);o.connect(g);g.connect(this.ctx.destination);o.start(t);o.stop(t+.55)}
 };
 const PW=4.65,PH=6.06,ENAMEL='#5f7a68';
+// The machine is a real model (public/models/typewriter.glb), built in
+// Blender from a script: enamel body with glass-topped, lettered keys on
+// short levers, the typebar fan, ribbon spools, a rubber platen with
+// knurled knobs, paper table and bail, and a chrome return lever. Its
+// three roots match the old primitive layout exactly, so the animation
+// is unchanged: Body stays put, Carriage slides with each letter (the
+// paper rides inside it) and Typebar strikes on each key.
 function Machine({carriage,paperGroup,typebar}){
- const keys=useMemo(()=>{const out=[];for(let r=0;r<4;r++)for(let k=0;k<10;k++)out.push(<mesh key={r+'-'+k} position={[-2.28+k*.5+r*.22,1.8+r*.14,1.28-r*.31]} rotation-x={1.07}><cylinderGeometry args={[.108,.108,.055,14]}/><meshStandardMaterial color="#141519" roughness={.4} metalness={.3}/></mesh>);return out},[]);
+ const [parts,setParts]=useState(null);
+ useEffect(()=>{let live=true;loadModel('typewriter.glb').then(src=>{if(!live)return;
+  // A fresh clone per mount: the roots get re-parented into animated groups.
+  const s=src.clone(true);s.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true}});
+  setParts({body:s.getObjectByName('Body'),car:s.getObjectByName('Carriage'),bar:s.getObjectByName('Typebar')})});
+  return()=>{live=false}},[]);
+ useEffect(()=>{if(!parts||!carriage.current||!typebar.current)return;const {car,bar}=parts,cg=carriage.current,tg=typebar.current;
+  car.position.set(0,0,0);bar.position.set(0,0,0);cg.add(car);tg.add(bar);
+  return()=>{cg.remove(car);tg.remove(bar)}},[parts,carriage,typebar]);
  return <group position={[0,-2.62,.7]}>
-  <mesh position-y={.75} castShadow receiveShadow><boxGeometry args={[6,1.5,3.4]}/><meshStandardMaterial color={ENAMEL} metalness={.25} roughness={.45}/></mesh>
-  <mesh position={[0,1.72,.95]} rotation-x={-.5} castShadow><boxGeometry args={[5.7,.16,1.9]}/><meshStandardMaterial color={ENAMEL} metalness={.25} roughness={.45}/></mesh>
-  {keys}
-  <mesh position={[0,.98,1.86]}><boxGeometry args={[2.3,.09,.3]}/><meshStandardMaterial color="#141519" roughness={.5}/></mesh>
-  <mesh position={[0,1.78,-1.2]} castShadow><boxGeometry args={[6,.55,1.2]}/><meshStandardMaterial color={ENAMEL} metalness={.25} roughness={.45}/></mesh>
-  <mesh position={[-1.05,1.98,-.35]} rotation-x={1.2}><cylinderGeometry args={[.16,.16,.05,18]}/><meshStandardMaterial color="#1c1d20" roughness={.45} metalness={.4}/></mesh>
-  <mesh position={[1.05,1.98,-.35]} rotation-x={1.2}><cylinderGeometry args={[.16,.16,.05,18]}/><meshStandardMaterial color="#1c1d20" roughness={.45} metalness={.4}/></mesh>
-  <mesh position={[0,2.14,-.55]}><boxGeometry args={[1.6,.15,.03]}/><meshStandardMaterial color="#101013" roughness={.6}/></mesh>
-  <group ref={typebar} position={[0,1.35,.55]} rotation-x={.5}><mesh position-y={.72}><boxGeometry args={[.07,1.55,.03]}/><meshStandardMaterial color="#8f8a7c" metalness={.7} roughness={.35}/></mesh></group>
-  <group ref={carriage} position={[0,2.28,-.95]}>
-   <mesh rotation-z={Math.PI/2} castShadow><cylinderGeometry args={[.17,.17,5.9,20]}/><meshStandardMaterial color="#0e0e10" roughness={.85}/></mesh>
-   <mesh position-x={-3.06} rotation-z={Math.PI/2}><cylinderGeometry args={[.23,.23,.2,16]}/><meshStandardMaterial color="#1c1d20" roughness={.4} metalness={.4}/></mesh>
-   <mesh position-x={3.06} rotation-z={Math.PI/2}><cylinderGeometry args={[.23,.23,.2,16]}/><meshStandardMaterial color="#1c1d20" roughness={.4} metalness={.4}/></mesh>
-   <mesh position={[0,-.22,.12]}><boxGeometry args={[5.9,.07,.34]}/><meshStandardMaterial color="#1c1d20" roughness={.5} metalness={.3}/></mesh>
-   <group ref={paperGroup} rotation-x={-.14}></group>
-  </group>
+  {parts&&parts.body&&<primitive object={parts.body}/>}
+  <group ref={typebar} position={[0,1.35,.55]} rotation-x={.5}/>
+  <group ref={carriage} position={[0,2.28,-.95]}><group ref={paperGroup} rotation-x={-.14}></group></group>
  </group>
 }
 function TypeScene({letter,onMetrics,caret,pulse,soundRef}){
